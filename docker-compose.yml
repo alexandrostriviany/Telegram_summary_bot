@@ -1,0 +1,14 @@
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: telegram-bot-dynamodb
+    ports:
+      - "8001:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    networks:
+      - telegram-bot-network
+
+networks:
+  telegram-bot-network:
+    name: telegram-bot-network
+    driver: bridge

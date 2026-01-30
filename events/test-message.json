@@ -1,0 +1,27 @@
+{
+  "body": "{\"update_id\":123456789,\"message\":{\"message_id\":1,\"from\":{\"id\":12345678,\"is_bot\":false,\"first_name\":\"Test\",\"username\":\"testuser\"},\"chat\":{\"id\":-1001234567890,\"title\":\"Test Group\",\"type\":\"supergroup\"},\"date\":1699999999,\"text\":\"Hello, this is a test message!\"}}",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "httpMethod": "POST",
+  "isBase64Encoded": false,
+  "path": "/webhook",
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "abc123",
+    "domainName": "abc123.execute-api.us-east-1.amazonaws.com",
+    "domainPrefix": "abc123",
+    "http": {
+      "method": "POST",
+      "path": "/webhook",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "149.154.167.220",
+      "userAgent": "TelegramBot"
+    },
+    "requestId": "request-id-123",
+    "routeKey": "POST /webhook",
+    "stage": "prod",
+    "time": "14/Nov/2023:12:00:00 +0000",
+    "timeEpoch": 1699999999000
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "enabled": true,
+  "name": "Create Code Review",
+  "description": "Automatically creates a code review using CRUX after the agent completes a task, following Amazon's CR best practices",
+  "version": "1",
+  "when": {
+    "type": "agentStop"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "The task is complete. using context7 Review the code that was change as a sinior developer. fix all issues. tun tests"
+  },
+  "workspaceFolderName": "today_or_tomorrow",
+  "shortName": "create-code-review"
+}

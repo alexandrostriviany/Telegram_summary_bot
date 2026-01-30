@@ -1,0 +1,20 @@
+{
+  "body": "{\"update_id\":123456790,\"message\":{\"message_id\":2,\"from\":{\"id\":12345678,\"is_bot\":false,\"first_name\":\"Test\",\"username\":\"testuser\"},\"chat\":{\"id\":-1001234567890,\"title\":\"Test Group\",\"type\":\"supergroup\"},\"date\":1699999999,\"text\":\"/summary 2h\"}}",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "httpMethod": "POST",
+  "isBase64Encoded": false,
+  "path": "/webhook",
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "abc123",
+    "http": {
+      "method": "POST",
+      "path": "/webhook"
+    },
+    "requestId": "request-id-124",
+    "routeKey": "POST /webhook",
+    "stage": "prod"
+  }
+}

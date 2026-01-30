@@ -1,0 +1,59 @@
+{
+  "name": "telegram-summary-bot",
+  "version": "1.0.0",
+  "description": "Telegram AI Summary Bot - Serverless application for generating AI-powered chat summaries",
+  "main": "dist/handler.js",
+  "scripts": {
+    "build": "tsc",
+    "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node18 --outfile=dist/handler.js --external:@aws-sdk/*",
+    "bundle:prod": "esbuild src/handler.ts --bundle --platform=node --target=node18 --outfile=dist/handler.js --external:@aws-sdk/* --minify --sourcemap",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "clean": "rm -rf dist",
+    "prebundle": "npm run clean",
+    "deploy": "./scripts/deploy.sh",
+    "deploy:guided": "./scripts/deploy.sh --guided",
+    "deploy:dev": "./scripts/deploy.sh --env dev",
+    "deploy:prod": "./scripts/deploy.sh --env prod",
+    "register-webhook": "./scripts/register-webhook.sh",
+    "sam:build": "npm run bundle:prod && sam build",
+    "sam:deploy": "sam deploy",
+    "sam:local": "sam local invoke TelegramBotFunction -e events/test-message.json"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "ai",
+    "summary",
+    "aws",
+    "lambda",
+    "serverless"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.400.0",
+    "@aws-sdk/lib-dynamodb": "^3.400.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.400.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.119",
+    "@types/jest": "^29.5.5",
+    "@types/node": "^18.18.0",
+    "@types/node-fetch": "^2.6.6",
+    "esbuild": "^0.19.4",
+    "fast-check": "^3.13.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.2.2",
+    "@typescript-eslint/eslint-plugin": "^6.7.0",
+    "@typescript-eslint/parser": "^6.7.0",
+    "eslint": "^8.50.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
