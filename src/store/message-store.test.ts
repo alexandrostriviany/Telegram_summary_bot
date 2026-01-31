@@ -233,9 +233,6 @@ describe('DynamoDBMessageStore', () => {
         ExpressionAttributeValues: {
           ':chatId': { N: '123456' },
         },
-        ExpressionAttributeNames: {
-          '#ts': 'timestamp',
-        },
         ScanIndexForward: false, // Most recent first for count queries
         Limit: 2,
       });

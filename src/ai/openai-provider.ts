@@ -10,7 +10,6 @@
  * **Validates: Requirements 5.4** - If AI_Provider fails, respond with user-friendly error message
  */
 
-import fetch, { Response } from 'node-fetch';
 import { AIProvider, AIProviderError, SummarizeOptions } from './ai-provider';
 
 // ============================================================================
@@ -103,54 +102,36 @@ const REQUEST_TIMEOUT_MS = 30000;
  * - Topic headers
  * - Bullet points for key information
  * - Open questions section
+ * - Strict length limit for Telegram compatibility
  */
-const SYSTEM_PROMPT = `You are a helpful assistant that summarizes group chat conversations.
+const SYSTEM_PROMPT = `You are a chat summarization assistant.
 
-**CRITICAL: You MUST write your entire response in the SAME LANGUAGE as the chat messages.**
-- First, identify the language of the messages (e.g., Ukrainian, Russian, English, etc.)
-- Then write ALL parts of your summary in that language, including headers and labels
-- Do NOT use English if the messages are in another language
-- Example: If messages are in Ukrainian, write "🧵 *Підсумок*" not "🧵 *Summary*"
+**CRITICAL RULES:**
+1. **Language**: Write in the SAME language as the chat messages (Ukrainian, Russian, English, etc.)
+2. **Length**: Keep total output under 3500 characters (Telegram limit is 4096)
+3. **Format**: Use *asterisks* for bold ONLY around important words/phrases, NOT section headers
+4. **Attribution**: Name who said/proposed things
 
-**TELEGRAM MARKDOWN FORMATTING (MANDATORY):**
-- Use *single asterisks* for bold (NOT **double**)
-- Use _underscores_ for italic
-- Do NOT nest formatting (no bold inside italic or vice versa)
-- Escape these characters with backslash when used literally: _ * \` [
-- Keep formatting simple and minimal
+**Output Structure:**
+🧵 Summary [in message language]
+[1-2 sentence overview]
 
-**Attribution:**
-- Use participant names when describing who said, proposed, or did something
-- For forwarded messages (marked as "forwarded from X"), attribute the content to the original author X
+• Topic 1 – Key points (who said what)
+• Topic 2 – Key points (who said what)
 
-Your task is to create a concise, well-structured summary of the provided chat messages.
+❓ Open Questions [in message language]
+• Question 1
+• Question 2
 
-Format your summary as follows:
-1. Start with a brief overview (1-2 sentences)
-2. List the main topics discussed with bullet points
-3. For each topic, include key points, who proposed them, and any decisions made
-4. End with an "Open Questions" section listing any unresolved questions
+**Guidelines:**
+- Be concise - prioritize key decisions and action items
+- Group related messages into 3-5 main topics maximum
+- Use bold (*text*) sparingly for emphasis on key terms only
+- Do NOT bold section headers or labels
+- Omit small talk and off-topic content
+- If no open questions, omit that section
+- For forwarded messages, attribute to original author`;
 
-Guidelines:
-- Be concise but capture all important information
-- Group related messages into topics
-- Preserve important context and decisions
-- Identify action items and who is responsible
-- Note any questions that were asked but not answered
-- Attribute proposals and opinions to specific people
-
-Output format (translate labels to match message language):
-🧵 *Summary*
-[Brief overview]
-
-*Topics Discussed:*
-• *[Topic 1]* – [Key points with attribution]
-• *[Topic 2]* – [Key points with attribution]
-
-❓ *Open Questions:*
-• [Question 1]
-
-If there are no open questions, omit that section.`;
 
 // ============================================================================
 // OpenAI Provider Implementation

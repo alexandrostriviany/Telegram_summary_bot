@@ -2,6 +2,8 @@
 
 This document provides detailed API documentation for the Telegram AI Summary Bot, including interfaces, types, and usage examples.
 
+> **Note**: As of v1.1.0, the bot uses HTML formatting mode instead of Markdown for more reliable message delivery.
+
 ---
 
 ## Table of Contents
@@ -13,6 +15,59 @@ This document provides detailed API documentation for the Telegram AI Summary Bo
 - [Summary Engine](#summary-engine)
 - [Telegram Client](#telegram-client)
 - [Error Handling](#error-handling)
+- [Message Formatting](#message-formatting)
+
+---
+
+## Message Formatting
+
+### HTML Mode
+
+The bot uses **Telegram HTML mode** for message formatting (as of v1.1.0):
+
+**Supported Tags:**
+- `<b>text</b>` or `<strong>text</strong>` - Bold
+- `<i>text</i>` or `<em>text</em>` - Italic  
+- `<code>text</code>` - Inline code
+- `<u>text</u>` - Underline
+- `<s>text</s>` - Strikethrough
+
+**Markdown Conversion:**
+
+The AI generates markdown-style formatting which is automatically converted to HTML:
+- `*bold*` → `<b>bold</b>`
+- `_italic_` → `<i>italic</i>`
+- `` `code` `` → `<code>code</code>`
+
+**HTML Escaping:**
+
+Special characters are escaped to prevent injection:
+- `&` → `&amp;`
+- `<` → `&lt;`
+- `>` → `&gt;`
+
+### Message Length Limits
+
+- **Telegram maximum**: 4096 characters
+- **AI target**: 3500 characters (enforced in system prompt)
+- **Automatic truncation**: Messages exceeding 4096 chars are truncated with suffix
+
+**Truncation behavior:**
+```typescript
+if (text.length > 4096) {
+  text = text.substring(0, 4096 - 27) + '\n\n... (message truncated)';
+}
+```
+
+### Photo Captions
+
+Photos with captions are stored with a special prefix:
+
+```
+[📷 Photo] Your caption text here
+```
+
+**Important**: Only photos WITH captions are stored. Photos without captions are ignored (per requirements 2.2).
 
 ---
 
@@ -632,7 +687,7 @@ interface TelegramClient {
   /**
    * Send a message to a chat
    * @param chatId - Chat ID
-   * @param text - Message text (supports Markdown)
+   * @param text - Message text (supports HTML)
    */
   sendMessage(chatId: number, text: string): Promise<void>;
 }

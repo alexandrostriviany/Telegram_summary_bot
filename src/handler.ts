@@ -200,7 +200,8 @@ export async function storeMessage(
   };
 
   await messageStore.store(storedMessage);
-  console.log('Stored message:', message.message_id, 'in chat:', message.chat.id);
+  console.log('Stored message:', message.message_id, 'in chat:', message.chat.id, 
+    message.photo ? '(photo with caption)' : '(text)');
 }
 
 /**
@@ -214,7 +215,18 @@ export async function storeMessage(
 export function isTextMessage(message: Message): boolean {
   // Must have text content (either text or caption for media messages)
   const content = message.text ?? message.caption;
+  
+  // Debug logging for photo messages
+  if (message.photo) {
+    console.log('Photo message detected:', {
+      hasCaption: !!message.caption,
+      caption: message.caption,
+      photoCount: message.photo.length,
+    });
+  }
+  
   if (!content) {
+    console.log('Message has no text or caption, ignoring');
     return false;
   }
   

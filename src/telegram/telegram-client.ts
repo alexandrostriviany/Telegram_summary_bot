@@ -2,10 +2,21 @@
  * Telegram Bot API Client
  * 
  * Provides a wrapper for Telegram Bot API calls with retry logic,
- * error handling, and Markdown formatting support.
+ * error handling, and HTML formatting support.
  * 
  * @module telegram/telegram-client
  */
+
+/**
+ * Maximum message length allowed by Telegram
+ * Messages longer than this will be truncated
+ */
+const MAX_MESSAGE_LENGTH = 4096;
+
+/**
+ * Truncation suffix to indicate message was cut off
+ */
+const TRUNCATION_SUFFIX = '\n\n... (message truncated)';
 
 /**
  * Interface for Telegram Bot API client
@@ -17,7 +28,7 @@ export interface TelegramClient {
    * Send a message to a Telegram chat
    * 
    * @param chatId - The chat ID to send the message to
-   * @param text - The message text (supports Markdown)
+   * @param text - The message text (supports HTML)
    */
   sendMessage(chatId: number, text: string): Promise<void>;
 }
@@ -102,7 +113,7 @@ export class TelegramBotClient implements TelegramClient {
    * Send a message to a Telegram chat with retry logic
    * 
    * @param chatId - The chat ID to send the message to
-   * @param text - The message text (supports Markdown)
+   * @param text - The message text (supports HTML)
    * @throws TelegramApiError if all retry attempts fail
    * 
    * **Validates: Requirements 1.1** - Send messages to Telegram chats
@@ -112,18 +123,26 @@ export class TelegramBotClient implements TelegramClient {
   async sendMessage(chatId: number, text: string): Promise<void> {
     const url = `${this.apiBaseUrl}${this.botToken}/sendMessage`;
     
-    // First try with Markdown
-    const bodyWithMarkdown = {
+    // Truncate message if it exceeds Telegram's limit
+    let messageText = text;
+    if (text.length > MAX_MESSAGE_LENGTH) {
+      const maxLength = MAX_MESSAGE_LENGTH - TRUNCATION_SUFFIX.length;
+      messageText = text.substring(0, maxLength) + TRUNCATION_SUFFIX;
+      console.warn(`Message truncated from ${text.length} to ${messageText.length} characters`);
+    }
+    
+    // Use HTML mode instead of Markdown for more robust formatting
+    const bodyWithHtml = {
       chat_id: chatId,
-      text: text,
-      parse_mode: 'Markdown',
+      text: messageText,
+      parse_mode: 'HTML',
     };
 
     let lastError: Error | undefined;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        await this.makeApiCall(url, bodyWithMarkdown);
+        await this.makeApiCall(url, bodyWithHtml);
         return; // Success - exit the retry loop
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -134,19 +153,19 @@ export class TelegramBotClient implements TelegramClient {
           lastError.message
         );
 
-        // If it's a markdown parsing error (400 with "can't parse entities"), 
-        // try sending without markdown instead of retrying
+        // If it's an HTML parsing error (400 with "can't parse entities"), 
+        // try sending without parse_mode instead of retrying
         if (lastError instanceof TelegramApiError && 
             lastError.statusCode === 400 && 
             lastError.errorDescription?.includes("can't parse entities")) {
-          console.log('Markdown parsing failed, retrying without parse_mode');
+          console.log('HTML parsing failed, retrying without parse_mode');
           try {
-            const bodyWithoutMarkdown = {
+            const bodyWithoutParseMode = {
               chat_id: chatId,
-              text: this.stripMarkdown(text),
+              text: this.stripHtml(text),
             };
-            await this.makeApiCall(url, bodyWithoutMarkdown);
-            return; // Success without markdown
+            await this.makeApiCall(url, bodyWithoutParseMode);
+            return; // Success without HTML
           } catch (plainError) {
             lastError = plainError instanceof Error ? plainError : new Error(String(plainError));
             console.error('Plain text send also failed:', lastError.message);
@@ -167,22 +186,23 @@ export class TelegramBotClient implements TelegramClient {
   }
 
   /**
-   * Strip markdown formatting from text
+   * Strip HTML formatting from text
    * 
-   * @param text - Text with markdown
-   * @returns Plain text without markdown
+   * @param text - Text with HTML
+   * @returns Plain text without HTML
    */
-  private stripMarkdown(text: string): string {
+  private stripHtml(text: string): string {
     return text
-      // Remove bold
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      // Remove italic (underscore)
-      .replace(/__([^_]+)__/g, '$1')
-      .replace(/_([^_]+)_/g, '$1')
-      // Remove code blocks
-      .replace(/```[^`]*```/g, '')
-      .replace(/`([^`]+)`/g, '$1');
+      // Remove HTML tags
+      .replace(/<b>([^<]+)<\/b>/g, '$1')
+      .replace(/<strong>([^<]+)<\/strong>/g, '$1')
+      .replace(/<i>([^<]+)<\/i>/g, '$1')
+      .replace(/<em>([^<]+)<\/em>/g, '$1')
+      .replace(/<u>([^<]+)<\/u>/g, '$1')
+      .replace(/<s>([^<]+)<\/s>/g, '$1')
+      .replace(/<code>([^<]+)<\/code>/g, '$1')
+      .replace(/<pre>([^<]+)<\/pre>/g, '$1')
+      .replace(/<a[^>]*>([^<]+)<\/a>/g, '$1');
   }
 
   /**

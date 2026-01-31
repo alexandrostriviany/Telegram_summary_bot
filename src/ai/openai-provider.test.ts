@@ -13,10 +13,9 @@
 import { OpenAIProvider } from './openai-provider';
 import { AIProviderError } from './ai-provider';
 
-// Mock node-fetch
-jest.mock('node-fetch');
-import fetch, { Response } from 'node-fetch';
-const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
+// Mock global fetch
+const mockFetch = jest.fn();
+global.fetch = mockFetch as any;
 
 describe('OpenAIProvider', () => {
   const originalEnv = process.env.OPENAI_API_KEY;

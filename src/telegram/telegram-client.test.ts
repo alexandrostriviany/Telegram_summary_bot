@@ -72,30 +72,30 @@ describe('TelegramBotClient', () => {
           body: JSON.stringify({
             chat_id: 12345,
             text: 'Hello, world!',
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
           }),
         }
       );
     });
 
-    it('should send message with Markdown formatting', async () => {
+    it('should send message with HTML formatting', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ ok: true }),
       });
 
       const client = new TelegramBotClient(defaultConfig);
-      const markdownText = '🧵 *Summary*\n• Topic 1\n• Topic 2\n❓ *Questions*';
+      const htmlText = '🧵 <b>Summary</b>\n• Topic 1\n• Topic 2\n❓ <b>Questions</b>';
       
-      await client.sendMessage(12345, markdownText);
+      await client.sendMessage(12345, htmlText);
 
       expect(mockFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
           body: JSON.stringify({
             chat_id: 12345,
-            text: markdownText,
-            parse_mode: 'Markdown',
+            text: htmlText,
+            parse_mode: 'HTML',
           }),
         })
       );

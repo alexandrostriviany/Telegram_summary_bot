@@ -258,13 +258,18 @@ export class DynamoDBMessageStore implements MessageStore {
     const isCountQuery = limit !== undefined && startTime === undefined && endTime === undefined;
     const scanIndexForward = !isCountQuery;
 
+    // Only include ExpressionAttributeNames if we're using #ts in the expression
+    const hasTimestampCondition = startTime !== undefined || endTime !== undefined;
+    
     const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: keyConditionExpression,
       ExpressionAttributeValues: expressionAttributeValues,
-      ExpressionAttributeNames: {
-        '#ts': 'timestamp', // timestamp is a reserved word in DynamoDB
-      },
+      ...(hasTimestampCondition && {
+        ExpressionAttributeNames: {
+          '#ts': 'timestamp', // timestamp is a reserved word in DynamoDB
+        },
+      }),
       ScanIndexForward: scanIndexForward,
       Limit: limit,
     });

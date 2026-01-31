@@ -125,6 +125,27 @@ flowchart TB
 npm test
 ```
 
+### Unit Tests Only
+
+```bash
+npm test -- --testPathIgnore="integration"
+```
+
+### Integration Tests
+
+Integration tests require DynamoDB Local running via Docker:
+
+```bash
+# Start DynamoDB Local
+docker-compose up -d
+
+# Run integration tests
+RUN_INTEGRATION_TESTS=true DYNAMODB_ENDPOINT=http://localhost:8001 npm test -- src/handler.integration.test.ts
+
+# Stop DynamoDB Local
+docker-compose down
+```
+
 ### Watch Mode
 
 ```bash
@@ -634,7 +655,82 @@ describe('Property: Hierarchical Summarization', () => {
 
 ## Integration Tests
 
-### Webhook Flow Test
+Integration tests verify end-to-end functionality with a real DynamoDB Local instance.
+
+### Setup
+
+Integration tests use Docker Compose to run DynamoDB Local:
+
+```yaml
+# docker-compose.yml
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8001:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+```
+
+### Running Integration Tests
+
+```bash
+# Start DynamoDB Local
+docker-compose up -d
+
+# Run integration tests
+RUN_INTEGRATION_TESTS=true DYNAMODB_ENDPOINT=http://localhost:8001 \
+  npm test -- src/handler.integration.test.ts
+
+# Stop DynamoDB Local
+docker-compose down
+```
+
+### Test Coverage
+
+Integration tests verify:
+
+1. **Text Message Storage** - Messages are correctly stored in DynamoDB
+2. **Photo Caption Storage** - Captions are stored with `[📷 Photo]` prefix
+3. **Photo Without Caption** - Photos without captions are correctly ignored
+4. **Command Handling** - Commands like `/help` are processed but not stored
+5. **Bot Added Event** - Welcome message sent when bot joins a group
+
+### Example Test
+
+```typescript
+it('should store a text message in DynamoDB', async () => {
+  const event: APIGatewayProxyEventV2 = {
+    body: JSON.stringify({
+      update_id: 123456,
+      message: {
+        message_id: 789,
+        chat: { id: -1001234567890, type: 'supergroup' },
+        from: { id: 987654321, first_name: 'Alice', username: 'alice' },
+        date: Math.floor(Date.now() / 1000),
+        text: 'Hello, this is a test message!',
+      },
+    }),
+  } as any;
+
+  const result = await handler(event);
+
+  expect((result as any).statusCode).toBe(200);
+
+  // Verify message was stored
+  const scanResult = await dynamoClient.send(new ScanCommand({
+    TableName: TEST_TABLE_NAME,
+  }));
+
+  const storedMessage = scanResult.Items!.find(item => 
+    item.messageId.N === '789'
+  );
+  
+  expect(storedMessage).toBeDefined();
+  expect(storedMessage!.text.S).toBe('Hello, this is a test message!');
+});
+```
+
+---
 
 ```typescript
 // src/handler.integration.test.ts

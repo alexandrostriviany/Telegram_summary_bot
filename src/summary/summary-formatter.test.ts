@@ -241,6 +241,33 @@ describe('DefaultSummaryFormatter', () => {
         expect(result).toContain('&');
       });
 
+      it('should convert markdown to HTML formatting', () => {
+        const rawSummary = 'Use *bold* and _italic_ with `code`';
+        const result = formatter.format(rawSummary);
+
+        // Should convert markdown to HTML
+        expect(result).toContain('<b>bold</b>');
+        expect(result).toContain('<i>italic</i>');
+        expect(result).toContain('<code>code</code>');
+      });
+
+      it('should handle mixed markdown and regular text', () => {
+        const rawSummary = 'Topic: Use API_KEY for authentication';
+        const result = formatter.format(rawSummary);
+
+        // Underscores in regular text should not be converted
+        expect(result).toContain('API_KEY');
+      });
+
+      it('should escape HTML special characters', () => {
+        const rawSummary = 'Use <script> tags & entities';
+        const result = formatter.format(rawSummary);
+
+        // Should escape HTML special characters
+        expect(result).toContain('&lt;script&gt;');
+        expect(result).toContain('&amp;');
+      });
+
       it('should handle unicode characters', () => {
         const rawSummary = 'Обсуждение проекта. 项目讨论。';
         const result = formatter.format(rawSummary);

@@ -238,11 +238,51 @@ export class DefaultSummaryFormatter implements SummaryFormatter {
   }
 
   /**
+   * Convert markdown-style formatting to HTML
+   * 
+   * The AI generates markdown-style formatting (* for bold, _ for italic)
+   * We convert this to HTML for Telegram's HTML mode
+   * 
+   * @param text - Text with markdown-style formatting
+   * @returns Text with HTML formatting
+   */
+  private convertMarkdownToHtml(text: string): string {
+    let result = text;
+    
+    // Convert bold: *text* to <b>text</b>
+    // Match single asterisks with content between them (non-greedy)
+    result = result.replace(/\*([^*\n]+?)\*/g, '<b>$1</b>');
+    
+    // Convert italic: _text_ to <i>text</i>
+    // Match underscores with content between them (non-greedy)
+    result = result.replace(/_([^_\n]+?)_/g, '<i>$1</i>');
+    
+    // Convert code: `text` to <code>text</code>
+    result = result.replace(/`([^`\n]+?)`/g, '<code>$1</code>');
+    
+    // Escape remaining HTML special characters
+    // Do this after converting markdown to avoid escaping our HTML tags
+    result = result
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      // Restore our HTML tags
+      .replace(/&lt;b&gt;/g, '<b>')
+      .replace(/&lt;\/b&gt;/g, '</b>')
+      .replace(/&lt;i&gt;/g, '<i>')
+      .replace(/&lt;\/i&gt;/g, '</i>')
+      .replace(/&lt;code&gt;/g, '<code>')
+      .replace(/&lt;\/code&gt;/g, '</code>');
+    
+    return result;
+  }
+
+  /**
    * Build the formatted output string
    * 
    * @param topics - Array of topic strings
    * @param questions - Array of question strings
-   * @returns Formatted summary string
+   * @returns Formatted summary string with HTML formatting
    */
   private buildFormattedOutput(topics: string[], questions: string[]): string {
     const parts: string[] = [];
@@ -254,7 +294,7 @@ export class DefaultSummaryFormatter implements SummaryFormatter {
     // Add topics
     if (topics.length > 0) {
       for (const topic of topics) {
-        parts.push(`${EMOJI.BULLET} ${topic}`);
+        parts.push(`${EMOJI.BULLET} ${this.convertMarkdownToHtml(topic)}`);
       }
     } else {
       parts.push(`${EMOJI.BULLET} No significant topics to summarize.`);
@@ -265,7 +305,7 @@ export class DefaultSummaryFormatter implements SummaryFormatter {
       parts.push('');
       parts.push(`${EMOJI.QUESTION} ${OPEN_QUESTIONS_HEADER}`);
       for (const question of questions) {
-        parts.push(`${EMOJI.BULLET} ${question}`);
+        parts.push(`${EMOJI.BULLET} ${this.convertMarkdownToHtml(question)}`);
       }
     }
 

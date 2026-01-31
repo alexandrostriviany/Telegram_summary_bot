@@ -2,6 +2,8 @@
 
 A serverless application that helps users catch up on missed group chat discussions through AI-powered summaries. Built on AWS Lambda, DynamoDB, and supports pluggable AI providers (OpenAI or AWS Bedrock/Claude).
 
+> **Latest Update (v1.1.0)**: Fixed DynamoDB query errors, switched to HTML formatting for better reliability, added message length enforcement, and improved markdown handling. See [CHANGELOG.md](../CHANGELOG.md) for details.
+
 ## Table of Contents
 
 - [Overview](#overview)
@@ -26,6 +28,8 @@ The Telegram Summary Bot is designed to help users quickly understand missed dis
 - **Multi-language**: Auto-detects message language and responds in the same language
 - **Forward Attribution**: Tracks forwarded messages and attributes content to original authors
 - **Photo Captions**: Captures image descriptions/captions for inclusion in summaries
+- **HTML Formatting**: Uses Telegram HTML mode for robust message formatting
+- **Length Enforcement**: Automatically handles Telegram's 4096 character limit
 
 ```mermaid
 flowchart LR
