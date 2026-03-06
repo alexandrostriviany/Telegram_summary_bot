@@ -1,0 +1,77 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Setup AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run bundle:prod
+
+      - name: SAM build
+        run: sam build
+
+      - name: SAM deploy
+        id: sam-deploy
+        run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              TelegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+              OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
+              LLMProvider=${{ vars.LLM_PROVIDER || 'gemini' }} \
+              GeminiApiKey=${{ secrets.GEMINI_API_KEY }}
+
+      - name: Get webhook URL from stack outputs
+        id: get-url
+        run: |
+          STACK_NAME=$(grep -m1 'stack_name' samconfig.toml 2>/dev/null | tr -d ' "' | cut -d= -f2 || echo "telegram-summary-bot")
+          WEBHOOK_URL=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query 'Stacks[0].Outputs[?OutputKey==`WebhookUrl`].OutputValue' \
+            --output text)
+          echo "webhook_url=$WEBHOOK_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Register Telegram webhook
+        run: |
+          RESPONSE=$(curl -sf "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setWebhook?url=${{ steps.get-url.outputs.webhook_url }}")
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"ok":true' || exit 1
+
+      - name: Verify webhook registration
+        run: |
+          RESPONSE=$(curl -sf "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/getWebhookInfo")
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"url":"${{ steps.get-url.outputs.webhook_url }}"' || echo "Warning: webhook URL mismatch"
