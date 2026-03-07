@@ -496,9 +496,9 @@ describe('DefaultSummaryEngine', () => {
 
       // The final call should include the combination prompt
       const lastCall = (mockProvider.summarize as jest.Mock).mock.calls.slice(-1)[0][0];
-      expect(lastCall).toContain('The following are summaries of different parts of a long conversation.');
-      expect(lastCall).toContain('Part 1: First part topics');
-      expect(lastCall).toContain('Part 2: Second part topics');
+      expect(lastCall).toContain('Here are the JSON summaries to merge:');
+      expect(lastCall).toContain('First part topics');
+      expect(lastCall).toContain('Second part topics');
     });
   });
 
@@ -638,8 +638,8 @@ describe('DefaultSummaryEngine', () => {
       const summaries = await engine.summarizeChunks(chunks);
 
       expect(summaries).toHaveLength(2);
-      expect(summaries[0]).toBe('Part 1: Summary A');
-      expect(summaries[1]).toBe('Part 2: Summary B');
+      expect(summaries[0]).toBe('Summary A');
+      expect(summaries[1]).toBe('Summary B');
     });
   });
 
@@ -658,7 +658,7 @@ describe('DefaultSummaryEngine', () => {
 
       const call = (mockProvider.summarize as jest.Mock).mock.calls[0][0];
       
-      expect(call).toContain('The following are summaries of different parts of a long conversation.');
+      expect(call).toContain('Here are the JSON summaries to merge:');
       expect(call).toContain('Part 1: Topics about coding');
       expect(call).toContain('Part 2: Topics about testing');
     });
@@ -706,7 +706,7 @@ describe('DefaultSummaryEngine', () => {
       expect((mockProvider.summarize as jest.Mock).mock.calls.length).toBeGreaterThan(1);
       // The last call should be the combination call
       const lastCallArgs = (mockProvider.summarize as jest.Mock).mock.calls.slice(-1)[0][0];
-      expect(lastCallArgs).toContain('The following are summaries of different parts of a long conversation.');
+      expect(lastCallArgs).toContain('Here are the JSON summaries to merge:');
     });
 
     it('should use direct summarization when within token limit', async () => {

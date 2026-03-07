@@ -15,6 +15,7 @@
 import { StoredMessage, MessageRange, MessageQuery } from '../types';
 import { MessageStore } from '../store/message-store';
 import { AIProvider } from '../ai/ai-provider';
+import { COMBINE_SUMMARIES_PROMPT } from '../ai/prompts';
 import { NoMessagesError } from '../errors/error-handler';
 
 // Re-export NoMessagesError for backward compatibility
@@ -418,7 +419,7 @@ export class DefaultSummaryEngine implements SummaryEngine {
       const chunkWithContext = [contextPrefix, ...chunk];
 
       const summary = await this.aiProvider.summarize(chunkWithContext);
-      summaries.push(`Part ${chunkNumber}: ${summary}`);
+      summaries.push(summary);
     }
 
     return summaries;
@@ -436,10 +437,10 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * **Validates: Requirements 6.3** - Combine chunk summaries into final hierarchical summary
    */
   async combineChunkSummaries(chunkSummaries: string[]): Promise<string> {
-    // Create a prompt that asks the AI to combine the chunk summaries
     const combinationPrompt = [
-      'The following are summaries of different parts of a long conversation.',
-      'Please combine them into a single cohesive summary that captures all key topics and discussions.',
+      COMBINE_SUMMARIES_PROMPT,
+      '',
+      'Here are the JSON summaries to merge:',
       '',
       ...chunkSummaries,
     ];
