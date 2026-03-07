@@ -31,8 +31,6 @@ interface GeminiRequest {
   generationConfig: {
     maxOutputTokens: number;
     temperature: number;
-    responseMimeType?: string;
-    responseSchema?: Record<string, unknown>;
   };
 }
 
@@ -79,7 +77,7 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 const MAX_CONTEXT_TOKENS = 8192;
 
 /** Default max tokens for response generation */
-const DEFAULT_MAX_TOKENS = 500;
+const DEFAULT_MAX_TOKENS = 1024;
 
 /** Default temperature for focused summarization */
 const DEFAULT_TEMPERATURE = 0.3;
@@ -93,36 +91,6 @@ const MAX_RETRIES = 3;
 /** Base delay in milliseconds for exponential backoff */
 const RETRY_BASE_DELAY_MS = 1000;
 
-/** JSON schema enforced at the API level for structured output */
-const SUMMARY_RESPONSE_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    overview: { type: 'STRING', description: '1-2 sentence overview of the conversation' },
-    topics: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          title: { type: 'STRING', description: 'Topic name' },
-          points: {
-            type: 'ARRAY',
-            items: { type: 'STRING' },
-            description: 'Key points with @username attribution',
-          },
-        },
-        required: ['title', 'points'],
-      },
-      description: '3-5 main topics',
-    },
-    questions: {
-      type: 'ARRAY',
-      items: { type: 'STRING' },
-      description: 'Open/unresolved questions, empty array if none',
-    },
-  },
-  required: ['overview', 'topics', 'questions'],
-};
-
 // ============================================================================
 // Gemini Provider Implementation
 // ============================================================================
@@ -130,7 +98,7 @@ const SUMMARY_RESPONSE_SCHEMA = {
 /**
  * Google Gemini Provider Implementation
  *
- * Uses Gemini 2.0 Flash for cost-efficient summarization.
+ * Uses Gemini 2.5 Flash for cost-efficient summarization.
  * Implements the AIProvider interface for seamless integration with the
  * summary engine.
  *
@@ -146,7 +114,7 @@ export class GeminiProvider implements AIProvider {
    * Create a new Gemini provider instance
    *
    * @param apiKey - Gemini API key (defaults to GEMINI_API_KEY env var)
-   * @param model - Model to use (defaults to LLM_MODEL env var, then gemini-2.0-flash)
+   * @param model - Model to use (defaults to LLM_MODEL env var, then gemini-2.5-flash)
    * @throws AIProviderError if API key is not configured
    */
   constructor(apiKey?: string, model?: string) {
@@ -172,7 +140,7 @@ export class GeminiProvider implements AIProvider {
    */
   async summarize(messages: string[], options?: SummarizeOptions): Promise<string> {
     if (messages.length === 0) {
-      return '🧵 **Summary**\nNo messages to summarize.';
+      return '🧵 Summary of recent discussion\n\n• No messages to summarize.';
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
@@ -194,8 +162,6 @@ export class GeminiProvider implements AIProvider {
       generationConfig: {
         maxOutputTokens: maxTokens,
         temperature: temperature,
-        responseMimeType: 'application/json',
-        responseSchema: SUMMARY_RESPONSE_SCHEMA,
       },
     };
 
@@ -224,11 +190,7 @@ export class GeminiProvider implements AIProvider {
   }
 
   /**
-   * Make an API request to Gemini
-   *
-   * @param requestBody - The request body to send
-   * @returns Promise resolving to the API response
-   * @throws AIProviderError if the request fails
+   * Make an API request to Gemini with retry and exponential backoff
    */
   private async makeApiRequest(requestBody: GeminiRequest): Promise<GeminiResponse> {
     const url = `${GEMINI_API_BASE_URL}/${this.model}:generateContent?key=${this.apiKey}`;
@@ -310,9 +272,6 @@ export class GeminiProvider implements AIProvider {
 
   /**
    * Handle error responses from the Gemini API
-   *
-   * @param response - The fetch response object
-   * @throws AIProviderError with appropriate user-friendly message
    */
   private async handleErrorResponse(response: Response): Promise<never> {
     let errorMessage = 'Unable to generate summary. Please try again later.';
@@ -359,11 +318,8 @@ export class GeminiProvider implements AIProvider {
   }
 
   /**
-   * Extract the summary text from the API response
-   *
-   * @param response - The API response
-   * @returns The summary text
-   * @throws AIProviderError if the response is invalid
+   * Extract the summary text from the API response.
+   * Skips thinking parts from Gemini 2.5 models.
    */
   private extractSummaryFromResponse(response: GeminiResponse): string {
     if (!response.candidates || response.candidates.length === 0) {
@@ -382,13 +338,6 @@ export class GeminiProvider implements AIProvider {
     }
 
     // Gemini 2.5 models include thinking parts (thought: true) before the actual response.
-    // Skip thinking parts and find the actual content.
-    console.log('Gemini response parts:', JSON.stringify(parts.map(p => ({
-      thought: p.thought ?? false,
-      textLength: p.text?.length ?? 0,
-      textPreview: p.text?.substring(0, 200) ?? '',
-    }))));
-
     const contentPart = parts.find(part => !part.thought && part.text);
     const content = contentPart?.text;
 
@@ -399,15 +348,11 @@ export class GeminiProvider implements AIProvider {
       );
     }
 
-    console.log('Gemini extracted content preview:', content.substring(0, 300));
     return content.trim();
   }
 
   /**
    * Estimate the number of tokens in a text string
-   *
-   * @param text - The text to estimate tokens for
-   * @returns Estimated token count
    */
   static estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
@@ -416,9 +361,6 @@ export class GeminiProvider implements AIProvider {
 
 /**
  * Create a Gemini provider instance with default configuration
- *
- * @returns A new GeminiProvider instance
- * @throws AIProviderError if API key is not configured
  */
 export function createGeminiProvider(): GeminiProvider {
   return new GeminiProvider();

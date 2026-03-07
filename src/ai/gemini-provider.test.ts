@@ -132,9 +132,8 @@ describe('GeminiProvider', () => {
       expect(body.contents[0].parts[0].text).toContain('User2: Hi there');
       expect(body.systemInstruction).toBeDefined();
       expect(body.systemInstruction.parts[0].text).toBe(SUMMARY_SYSTEM_PROMPT);
-      expect(body.generationConfig.responseMimeType).toBe('application/json');
-      expect(body.generationConfig.responseSchema).toBeDefined();
-      expect(body.generationConfig.responseSchema.required).toEqual(['overview', 'topics', 'questions']);
+      expect(body.generationConfig.responseMimeType).toBeUndefined();
+      expect(body.generationConfig.responseSchema).toBeUndefined();
     });
 
     it('should use LLM_MODEL env var in API URL', async () => {
@@ -181,7 +180,7 @@ describe('GeminiProvider', () => {
       await provider.summarize(['Test message']);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
-      expect(body.generationConfig.maxOutputTokens).toBe(500);
+      expect(body.generationConfig.maxOutputTokens).toBe(1024);
       expect(body.generationConfig.temperature).toBe(0.3);
     });
 
