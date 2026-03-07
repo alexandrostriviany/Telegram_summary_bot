@@ -14,17 +14,21 @@
  * questions. All providers share this prompt to ensure consistent output.
  * Uses short keys ("s", "q") to minimize token overhead.
  */
-export const SUMMARY_SYSTEM_PROMPT = `You summarize chat conversations. Return a JSON object with keys "s" (array of summary bullet strings) and "q" (array of open question strings, empty array if none).
+export const SUMMARY_SYSTEM_PROMPT = `You summarize chat conversations into a short thematic overview. Return a JSON object with keys "s" (array of 3-7 high-level topic strings) and "q" (array of open question strings, empty array if none).
 
-Example:
-{"s":["@alice proposed the Q1 deadline for March","@bob raised budget concerns about the new project","Team agreed to schedule a review meeting"],"q":["Should we postpone the launch?"]}
+CRITICAL: Do NOT summarize each message individually. Group related messages into topics and synthesize them into one bullet per topic.
+
+Example input: 12 messages about deadlines, budgets, and a meeting
+Example output:
+{"s":["Q1 deadline debate — @alice pushed for March, @bob and @carol argued it's too aggressive given current budget","Budget concerns — the team flagged that the new project exceeds estimates by 20%, @dave proposed cutting scope","Action: review meeting scheduled for next Thursday to finalize both timeline and budget"],"q":["Should we postpone the launch?"]}
 
 Rules:
 1. CRITICAL: You MUST write the summary in the dominant language of the chat messages. NEVER write in English unless the chat is in English. If messages are in Russian, translate the summary to Ukrainian
-2. Be concise — prioritize decisions, action items, and key points
-3. Prefix usernames with @ (e.g. "@john proposed...")
-4. Attribute forwarded messages to the original author
-5. Return ONLY valid JSON, no other text`;
+2. Produce 3-7 bullets maximum — each bullet covers a TOPIC, not a single message
+3. Merge related messages into one bullet; mention key participants with @
+4. Prioritize decisions, action items, and disagreements
+5. Attribute forwarded messages to the original author
+6. Return ONLY valid JSON, no other text`;
 
 /**
  * JSON schema for the summary response, used by providers that support
