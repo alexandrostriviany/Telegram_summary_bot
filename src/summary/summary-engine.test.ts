@@ -221,7 +221,7 @@ describe('DefaultSummaryEngine', () => {
       expect(formatted[0]).toMatch(/\[\d{2}:\d{2}\]/);
     });
 
-    it('should include reply context for reply messages', () => {
+    it('should include compact reply context for reply messages', () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider();
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
@@ -244,8 +244,7 @@ describe('DefaultSummaryEngine', () => {
 
       expect(formatted).toHaveLength(2);
       expect(formatted[1]).toContain('bob');
-      expect(formatted[1]).toContain('replying to alice');
-      expect(formatted[1]).toContain('Original message');
+      expect(formatted[1]).toContain('(>alice)');
       expect(formatted[1]).toContain('This is a reply');
     });
 
@@ -271,28 +270,64 @@ describe('DefaultSummaryEngine', () => {
       expect(formatted[0]).toContain('Replying to old message');
     });
 
-    it('should include thread/topic indicator', () => {
+    it('should group messages by threadId with headers when multiple groups', () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider();
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
 
       const messages = [
         createTestMessage({
+          messageId: 1,
           username: 'alice',
           text: 'Message in topic',
+          threadId: 42,
+        }),
+        createTestMessage({
+          messageId: 2,
+          username: 'bob',
+          text: 'General message',
+        }),
+      ];
+
+      const formatted = engine.formatMessagesForAI(messages);
+
+      // Should have thread header + message + general header + message
+      expect(formatted.some(l => l.includes('--- Thread 42 ---'))).toBe(true);
+      expect(formatted.some(l => l.includes('alice') && l.includes('Message in topic'))).toBe(true);
+      expect(formatted.some(l => l === '---')).toBe(true);
+      expect(formatted.some(l => l.includes('bob') && l.includes('General message'))).toBe(true);
+    });
+
+    it('should skip headers when all messages are in one group', () => {
+      const mockStore = createMockMessageStore();
+      const mockProvider = createMockAIProvider();
+      const engine = new DefaultSummaryEngine(mockStore, mockProvider);
+
+      const messages = [
+        createTestMessage({
+          messageId: 1,
+          username: 'alice',
+          text: 'Message in topic',
+          threadId: 42,
+        }),
+        createTestMessage({
+          messageId: 2,
+          username: 'bob',
+          text: 'Another message in same topic',
           threadId: 42,
         }),
       ];
 
       const formatted = engine.formatMessagesForAI(messages);
 
-      expect(formatted).toHaveLength(1);
-      expect(formatted[0]).toContain('[Topic 42]');
+      // No headers when single group
+      expect(formatted.every(l => !l.startsWith('---'))).toBe(true);
+      expect(formatted).toHaveLength(2);
       expect(formatted[0]).toContain('alice');
-      expect(formatted[0]).toContain('Message in topic');
+      expect(formatted[1]).toContain('bob');
     });
 
-    it('should truncate long reply previews', () => {
+    it('should use compact reply notation without preview text', () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider();
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
@@ -314,9 +349,10 @@ describe('DefaultSummaryEngine', () => {
 
       const formatted = engine.formatMessagesForAI(messages);
 
-      // The reply preview should be truncated to ~50 chars
-      expect(formatted[1]).toContain('...');
-      expect(formatted[1].length).toBeLessThan(formatted[0].length + 100);
+      // Compact notation: (>alice) instead of verbose reply preview
+      expect(formatted[1]).toContain('(>alice)');
+      // Should NOT contain the long preview text
+      expect(formatted[1]).not.toContain('AAAA');
     });
   });
 
@@ -496,7 +532,7 @@ describe('DefaultSummaryEngine', () => {
 
       // The final call should include the combination prompt
       const lastCall = (mockProvider.summarize as jest.Mock).mock.calls.slice(-1)[0][0];
-      expect(lastCall).toContain('Here are the JSON summaries to merge:');
+      expect(lastCall[0]).toContain('Merge these partial summaries');
       expect(lastCall).toContain('First part topics');
       expect(lastCall).toContain('Second part topics');
     });
@@ -556,9 +592,9 @@ describe('DefaultSummaryEngine', () => {
 
       if (chunks.length > 1) {
         // Check that the end of first chunk overlaps with start of second chunk
-        const firstChunkEnd = chunks[0].slice(-2);
-        const secondChunkStart = chunks[1].slice(0, 2);
-        
+        const firstChunkEnd = chunks[0].slice(-3);
+        const secondChunkStart = chunks[1].slice(0, 3);
+
         // At least some messages should overlap
         const hasOverlap = firstChunkEnd.some(msg => secondChunkStart.includes(msg));
         expect(hasOverlap).toBe(true);
@@ -657,8 +693,8 @@ describe('DefaultSummaryEngine', () => {
       await engine.combineChunkSummaries(chunkSummaries);
 
       const call = (mockProvider.summarize as jest.Mock).mock.calls[0][0];
-      
-      expect(call).toContain('Here are the JSON summaries to merge:');
+
+      expect(call[0]).toContain('Merge these partial summaries');
       expect(call).toContain('Part 1: Topics about coding');
       expect(call).toContain('Part 2: Topics about testing');
     });
@@ -706,7 +742,7 @@ describe('DefaultSummaryEngine', () => {
       expect((mockProvider.summarize as jest.Mock).mock.calls.length).toBeGreaterThan(1);
       // The last call should be the combination call
       const lastCallArgs = (mockProvider.summarize as jest.Mock).mock.calls.slice(-1)[0][0];
-      expect(lastCallArgs).toContain('Here are the JSON summaries to merge:');
+      expect(lastCallArgs[0]).toContain('Merge these partial summaries');
     });
 
     it('should use direct summarization when within token limit', async () => {

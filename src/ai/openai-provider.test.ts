@@ -79,9 +79,9 @@ describe('OpenAIProvider', () => {
       provider = new OpenAIProvider('test-api-key');
     });
 
-    it('should return empty summary message for empty messages array', async () => {
+    it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result).toContain('No messages to summarize');
+      expect(result).toBe('{"s":[],"q":[]}');
     });
 
     it('should make API request with correct parameters', async () => {
@@ -124,6 +124,7 @@ describe('OpenAIProvider', () => {
       expect(body.messages[1].role).toBe('user');
       expect(body.messages[1].content).toContain('User1: Hello');
       expect(body.messages[1].content).toContain('User2: Hi there');
+      expect(body.messages[1].content).toMatch(/^Summarize:\n\n/);
       expect(body.response_format).toEqual({ type: 'json_object' });
     });
 
@@ -143,7 +144,7 @@ describe('OpenAIProvider', () => {
       await provider.summarize(['Test message']);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
-      expect(body.max_tokens).toBe(500);
+      expect(body.max_tokens).toBe(1024);
       expect(body.temperature).toBe(0.3);
     });
 

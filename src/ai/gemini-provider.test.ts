@@ -93,9 +93,9 @@ describe('GeminiProvider', () => {
       provider = new GeminiProvider('test-gemini-key');
     });
 
-    it('should return empty summary message for empty messages array', async () => {
+    it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result).toContain('No messages to summarize');
+      expect(result).toBe('{"s":[],"q":[]}');
     });
 
     it('should make API request with correct parameters', async () => {
@@ -130,10 +130,11 @@ describe('GeminiProvider', () => {
       expect(body.contents[0].role).toBe('user');
       expect(body.contents[0].parts[0].text).toContain('User1: Hello');
       expect(body.contents[0].parts[0].text).toContain('User2: Hi there');
+      expect(body.contents[0].parts[0].text).toMatch(/^Summarize:\n\n/);
       expect(body.systemInstruction).toBeDefined();
       expect(body.systemInstruction.parts[0].text).toBe(SUMMARY_SYSTEM_PROMPT);
-      expect(body.generationConfig.responseMimeType).toBeUndefined();
-      expect(body.generationConfig.responseSchema).toBeUndefined();
+      expect(body.generationConfig.responseMimeType).toBe('application/json');
+      expect(body.generationConfig.responseSchema).toBeDefined();
     });
 
     it('should use LLM_MODEL env var in API URL', async () => {
@@ -180,7 +181,7 @@ describe('GeminiProvider', () => {
       await provider.summarize(['Test message']);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
-      expect(body.generationConfig.maxOutputTokens).toBe(2048);
+      expect(body.generationConfig.maxOutputTokens).toBe(1024);
       expect(body.generationConfig.temperature).toBe(0.3);
     });
 

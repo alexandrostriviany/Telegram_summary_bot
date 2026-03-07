@@ -85,7 +85,7 @@ const MODEL = 'gpt-3.5-turbo';
 const MAX_CONTEXT_TOKENS = 4096;
 
 /** Default max tokens for response generation */
-const DEFAULT_MAX_TOKENS = 500;
+const DEFAULT_MAX_TOKENS = 1024;
 
 /** Default temperature for focused summarization */
 const DEFAULT_TEMPERATURE = 0.3;
@@ -152,7 +152,7 @@ export class OpenAIProvider implements AIProvider {
    */
   async summarize(messages: string[], options?: SummarizeOptions): Promise<string> {
     if (messages.length === 0) {
-      return '🧵 **Summary**\nNo messages to summarize.';
+      return '{"s":[],"q":[]}';
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
@@ -160,7 +160,7 @@ export class OpenAIProvider implements AIProvider {
 
     // Format messages for the prompt
     const formattedMessages = messages.join('\n');
-    const userPrompt = `Please summarize the following chat conversation:\n\n${formattedMessages}`;
+    const userPrompt = `Summarize:\n\n${formattedMessages}`;
 
     const requestBody: ChatCompletionRequest = {
       model: this.model,

@@ -11,7 +11,7 @@
  */
 
 import { AIProvider, AIProviderError, SummarizeOptions } from './ai-provider';
-import { SUMMARY_SYSTEM_PROMPT } from './prompts';
+import { SUMMARY_SYSTEM_PROMPT, SUMMARY_RESPONSE_SCHEMA } from './prompts';
 
 // ============================================================================
 // Types and Interfaces
@@ -31,6 +31,8 @@ interface GeminiRequest {
   generationConfig: {
     maxOutputTokens: number;
     temperature: number;
+    responseMimeType?: string;
+    responseSchema?: object;
     thinkingConfig?: {
       thinkingBudget: number;
     };
@@ -80,7 +82,7 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 const MAX_CONTEXT_TOKENS = 8192;
 
 /** Default max tokens for response generation */
-const DEFAULT_MAX_TOKENS = 2048;
+const DEFAULT_MAX_TOKENS = 1024;
 
 /** Default temperature for focused summarization */
 const DEFAULT_TEMPERATURE = 0.3;
@@ -143,14 +145,14 @@ export class GeminiProvider implements AIProvider {
    */
   async summarize(messages: string[], options?: SummarizeOptions): Promise<string> {
     if (messages.length === 0) {
-      return '🧵 Summary of recent discussion\n\n• No messages to summarize.';
+      return '{"s":[],"q":[]}';
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
     const temperature = options?.temperature ?? DEFAULT_TEMPERATURE;
 
     const formattedMessages = messages.join('\n');
-    const userPrompt = `Please summarize the following chat conversation:\n\n${formattedMessages}`;
+    const userPrompt = `Summarize:\n\n${formattedMessages}`;
 
     const requestBody: GeminiRequest = {
       contents: [
@@ -165,6 +167,8 @@ export class GeminiProvider implements AIProvider {
       generationConfig: {
         maxOutputTokens: maxTokens,
         temperature: temperature,
+        responseMimeType: 'application/json',
+        responseSchema: SUMMARY_RESPONSE_SCHEMA,
         thinkingConfig: {
           thinkingBudget: 0,
         },

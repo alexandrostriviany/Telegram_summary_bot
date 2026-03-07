@@ -41,7 +41,14 @@ const TOKEN_BUFFER = 1000;
  * Overlap between chunks to maintain context continuity
  * This helps the AI understand context at chunk boundaries
  */
-const CHUNK_OVERLAP_MESSAGES = 2;
+const CHUNK_OVERLAP_MESSAGES = 3;
+
+/**
+ * Temporal gap threshold in milliseconds for topic splitting.
+ * Messages separated by more than this gap (within non-threaded messages)
+ * are treated as different conversation segments.
+ */
+const TEMPORAL_GAP_MS = 30 * 60 * 1000; // 30 minutes
 
 /**
  * Minimum number of messages per chunk to ensure meaningful summaries
@@ -180,34 +187,96 @@ export class DefaultSummaryEngine implements SummaryEngine {
 
   /**
    * Format messages for AI prompt consumption
-   * 
-   * Formats each message with:
-   * - Timestamp in human-readable format
-   * - Username
-   * - Message text
-   * - Thread context (reply indicator if applicable)
-   * 
+   *
+   * Groups messages by threadId and temporal gaps for better context,
+   * then formats each with timestamp, username, and compact reply notation.
+   *
    * @param messages - Array of stored messages to format
-   * @returns Array of formatted message strings
+   * @returns Array of formatted message strings (including group headers)
    */
   formatMessagesForAI(messages: StoredMessage[]): string[] {
-    // Build a map of messageId to message for thread context lookup
+    // Build a map of messageId to message for reply lookups
     const messageMap = new Map<number, StoredMessage>();
     for (const msg of messages) {
       messageMap.set(msg.messageId, msg);
     }
 
-    return messages.map((msg) => {
-      return this.formatSingleMessage(msg, messageMap);
-    });
+    // Group messages by threadId
+    const threadGroups = new Map<string, StoredMessage[]>();
+    const generalMessages: StoredMessage[] = [];
+
+    for (const msg of messages) {
+      if (msg.threadId !== undefined) {
+        const key = `thread-${msg.threadId}`;
+        if (!threadGroups.has(key)) threadGroups.set(key, []);
+        threadGroups.get(key)!.push(msg);
+      } else {
+        generalMessages.push(msg);
+      }
+    }
+
+    // Split general messages by temporal gaps
+    const generalGroups = this.splitByTemporalGaps(generalMessages);
+
+    // Determine if we need group headers (multiple distinct groups)
+    const totalGroups = threadGroups.size + generalGroups.length;
+
+    // Format all groups
+    const lines: string[] = [];
+
+    if (totalGroups <= 1) {
+      // Single group — no headers needed, saves tokens
+      const allMessages = generalMessages.length > 0 ? generalMessages
+        : [...threadGroups.values()][0] || [];
+      for (const msg of allMessages) {
+        lines.push(this.formatSingleMessage(msg, messageMap));
+      }
+      return lines;
+    }
+
+    // Multiple groups — add headers
+    for (const [key, msgs] of threadGroups) {
+      const threadId = key.replace('thread-', '');
+      lines.push(`--- Thread ${threadId} ---`);
+      for (const msg of msgs) {
+        lines.push(this.formatSingleMessage(msg, messageMap));
+      }
+    }
+
+    for (let i = 0; i < generalGroups.length; i++) {
+      lines.push('---');
+      for (const msg of generalGroups[i]) {
+        lines.push(this.formatSingleMessage(msg, messageMap));
+      }
+    }
+
+    return lines;
   }
 
   /**
-   * Format a single message for AI prompt
-   * 
-   * @param message - The message to format
-   * @param messageMap - Map of messageId to message for thread context
-   * @returns Formatted message string
+   * Split non-threaded messages into groups by temporal gaps.
+   * Messages separated by >30 min of silence are grouped separately.
+   */
+  private splitByTemporalGaps(messages: StoredMessage[]): StoredMessage[][] {
+    if (messages.length === 0) return [];
+
+    const groups: StoredMessage[][] = [[messages[0]]];
+
+    for (let i = 1; i < messages.length; i++) {
+      const gap = messages[i].timestamp - messages[i - 1].timestamp;
+      if (gap > TEMPORAL_GAP_MS) {
+        groups.push([messages[i]]);
+      } else {
+        groups[groups.length - 1].push(messages[i]);
+      }
+    }
+
+    return groups;
+  }
+
+  /**
+   * Format a single message for AI prompt.
+   * Uses compact reply notation (>username) instead of verbose format.
    */
   private formatSingleMessage(
     message: StoredMessage,
@@ -217,45 +286,23 @@ export class DefaultSummaryEngine implements SummaryEngine {
     const username = message.username;
     const text = message.text;
 
-    // Build the base message with forward attribution if present
-    let formatted: string;
-    if (message.forwardFromName) {
-      // For forwarded messages, show who forwarded it and who originally wrote it
-      formatted = `[${timestamp}] ${username} forwarded from ${message.forwardFromName}: ${text}`;
-    } else {
-      formatted = `[${timestamp}] ${username}: ${text}`;
-    }
-
-    // Add thread context if this is a reply
+    // Build reply indicator (compact notation)
+    let replyTag = '';
     if (message.replyToMessageId !== undefined) {
       const replyTo = messageMap.get(message.replyToMessageId);
       if (replyTo) {
-        // Include a brief context of what this message is replying to
-        const replyPreview = this.truncateText(replyTo.text, 50);
-        const replyAuthor = replyTo.forwardFromName 
-          ? `${replyTo.username} (fwd from ${replyTo.forwardFromName})`
-          : replyTo.username;
-        if (message.forwardFromName) {
-          formatted = `[${timestamp}] ${username} forwarded from ${message.forwardFromName} (replying to ${replyAuthor}: "${replyPreview}"): ${text}`;
-        } else {
-          formatted = `[${timestamp}] ${username} (replying to ${replyAuthor}: "${replyPreview}"): ${text}`;
-        }
+        replyTag = ` (>${replyTo.username})`;
       } else {
-        // Reply target not in our message set
-        if (message.forwardFromName) {
-          formatted = `[${timestamp}] ${username} forwarded from ${message.forwardFromName} (reply): ${text}`;
-        } else {
-          formatted = `[${timestamp}] ${username} (reply): ${text}`;
-        }
+        replyTag = ' (reply)';
       }
     }
 
-    // Add thread/topic indicator if present
-    if (message.threadId !== undefined) {
-      formatted = `[Topic ${message.threadId}] ${formatted}`;
-    }
+    // Build forward indicator
+    const fwdTag = message.forwardFromName
+      ? ` fwd:${message.forwardFromName}`
+      : '';
 
-    return formatted;
+    return `[${timestamp}] ${username}${fwdTag}${replyTag}: ${text}`;
   }
 
   /**
@@ -269,20 +316,6 @@ export class DefaultSummaryEngine implements SummaryEngine {
     const hours = date.getHours().toString().padStart(2, '0');
     const minutes = date.getMinutes().toString().padStart(2, '0');
     return `${hours}:${minutes}`;
-  }
-
-  /**
-   * Truncate text to a maximum length with ellipsis
-   * 
-   * @param text - The text to truncate
-   * @param maxLength - Maximum length before truncation
-   * @returns Truncated text with ellipsis if needed
-   */
-  private truncateText(text: string, maxLength: number): string {
-    if (text.length <= maxLength) {
-      return text;
-    }
-    return text.substring(0, maxLength - 3) + '...';
   }
 
   /**
@@ -407,22 +440,15 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * **Validates: Requirements 6.2** - Summarize each chunk separately
    */
   async summarizeChunks(chunks: string[][]): Promise<string[]> {
-    const summaries: string[] = [];
+    const totalChunks = chunks.length;
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const chunkNumber = i + 1;
-      const totalChunks = chunks.length;
-
-      // Add context about which part of the conversation this is
-      const contextPrefix = `[Part ${chunkNumber} of ${totalChunks}]`;
+    const promises = chunks.map((chunk, i) => {
+      const contextPrefix = `[Part ${i + 1} of ${totalChunks}]`;
       const chunkWithContext = [contextPrefix, ...chunk];
+      return this.aiProvider.summarize(chunkWithContext);
+    });
 
-      const summary = await this.aiProvider.summarize(chunkWithContext);
-      summaries.push(summary);
-    }
-
-    return summaries;
+    return Promise.all(promises);
   }
 
   /**
@@ -439,8 +465,6 @@ export class DefaultSummaryEngine implements SummaryEngine {
   async combineChunkSummaries(chunkSummaries: string[]): Promise<string> {
     const combinationPrompt = [
       COMBINE_SUMMARIES_PROMPT,
-      '',
-      'Here are the JSON summaries to merge:',
       '',
       ...chunkSummaries,
     ];

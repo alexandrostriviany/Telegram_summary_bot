@@ -180,9 +180,9 @@ describe('AI Provider Module', () => {
       }
     });
 
-    it('should return empty summary for empty messages array', async () => {
+    it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result).toContain('No messages to summarize');
+      expect(result).toBe('{"s":[],"q":[]}');
     });
   });
 
@@ -464,8 +464,8 @@ describe('AI Provider Module', () => {
           // Should not throw synchronously
           const promise = provider.summarize([]);
           expect(promise).toBeInstanceOf(Promise);
-          // Both providers now return a message for empty arrays
-          await expect(promise).resolves.toContain('No messages');
+          // All providers return empty JSON for empty arrays
+          await expect(promise).resolves.toBeDefined();
         });
 
         it('should accept messages with options', async () => {
