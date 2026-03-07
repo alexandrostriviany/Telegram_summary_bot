@@ -179,6 +179,34 @@ describe('DefaultSummaryEngine', () => {
       );
     });
 
+    it('should pass threadId to query for forum topic isolation', async () => {
+      const mockStore = createMockMessageStore([]);
+      const mockProvider = createMockAIProvider();
+      const engine = new DefaultSummaryEngine(mockStore, mockProvider);
+
+      const range: MessageRange = { type: 'time', value: 2 };
+      await engine.fetchMessages(12345, range, 789);
+
+      expect(mockStore.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatId: 12345,
+          threadId: 789,
+        })
+      );
+    });
+
+    it('should not include threadId in query when undefined', async () => {
+      const mockStore = createMockMessageStore([]);
+      const mockProvider = createMockAIProvider();
+      const engine = new DefaultSummaryEngine(mockStore, mockProvider);
+
+      const range: MessageRange = { type: 'time', value: 2 };
+      await engine.fetchMessages(12345, range);
+
+      const queryCall = (mockStore.query as jest.Mock).mock.calls[0][0] as MessageQuery;
+      expect(queryCall.threadId).toBeUndefined();
+    });
+
     it('should handle fractional hours (e.g., 30 minutes = 0.5 hours)', async () => {
       const mockStore = createMockMessageStore([]);
       const mockProvider = createMockAIProvider();

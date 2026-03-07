@@ -218,7 +218,7 @@ Type /help for more information.`;
  */
 export class SummaryHandler implements CommandHandler {
   private sendMessage: (chatId: number, text: string) => Promise<void>;
-  private generateSummary: (chatId: number, range: MessageRange) => Promise<string>;
+  private generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>;
   private creditsStore?: CreditsStore;
 
   /**
@@ -230,7 +230,7 @@ export class SummaryHandler implements CommandHandler {
    */
   constructor(
     sendMessage: (chatId: number, text: string) => Promise<void>,
-    generateSummary: (chatId: number, range: MessageRange) => Promise<string>,
+    generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
     creditsStore?: CreditsStore
   ) {
     this.sendMessage = sendMessage;
@@ -284,8 +284,8 @@ export class SummaryHandler implements CommandHandler {
         }
       }
 
-      // Generate and send the summary
-      const summary = await this.generateSummary(chatId, range);
+      // Generate and send the summary (scoped to forum topic if called from one)
+      const summary = await this.generateSummary(chatId, range, message.message_thread_id);
       await this.sendMessage(chatId, summary);
     } catch (error) {
       // Use centralized error handling
@@ -305,7 +305,7 @@ export class SummaryHandler implements CommandHandler {
  */
 export function createSummaryHandler(
   sendMessage: (chatId: number, text: string) => Promise<void>,
-  generateSummary: (chatId: number, range: MessageRange) => Promise<string>,
+  generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
   creditsStore?: CreditsStore
 ): SummaryHandler {
   return new SummaryHandler(sendMessage, generateSummary, creditsStore);

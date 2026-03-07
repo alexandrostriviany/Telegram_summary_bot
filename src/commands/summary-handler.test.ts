@@ -288,7 +288,7 @@ describe('SummaryHandler', () => {
       expect(mockGenerateSummary).toHaveBeenCalledWith(123, {
         type: 'time',
         value: DEFAULT_SUMMARY_HOURS,
-      });
+      }, undefined);
       expect(mockSendMessage).toHaveBeenCalledWith(123, '📝 Summary content');
     });
   });
@@ -305,18 +305,18 @@ describe('SummaryHandler', () => {
       expect(mockGenerateSummary).toHaveBeenCalledWith(456, {
         type: 'time',
         value: 1,
-      });
+      }, undefined);
     });
 
     it('should parse "30m" and generate summary for 0.5 hours', async () => {
       const message = createMockMessage(456);
-      
+
       await handler.execute(message, ['30m']);
 
       expect(mockGenerateSummary).toHaveBeenCalledWith(456, {
         type: 'time',
         value: 0.5,
-      });
+      }, undefined);
     });
   });
 
@@ -332,18 +332,18 @@ describe('SummaryHandler', () => {
       expect(mockGenerateSummary).toHaveBeenCalledWith(789, {
         type: 'count',
         value: 50,
-      });
+      }, undefined);
     });
 
     it('should parse "100" and generate summary for 100 messages', async () => {
       const message = createMockMessage(789);
-      
+
       await handler.execute(message, ['100']);
 
       expect(mockGenerateSummary).toHaveBeenCalledWith(789, {
         type: 'count',
         value: 100,
-      });
+      }, undefined);
     });
   });
 
@@ -414,7 +414,34 @@ describe('SummaryHandler', () => {
       expect(mockGenerateSummary).toHaveBeenCalledWith(123, {
         type: 'time',
         value: 1,
-      });
+      }, undefined);
+    });
+  });
+
+  describe('forum topic isolation', () => {
+    it('should pass message_thread_id to generateSummary for forum topics', async () => {
+      const message: Message = {
+        ...createMockMessage(123),
+        message_thread_id: 456,
+      };
+
+      await handler.execute(message, []);
+
+      expect(mockGenerateSummary).toHaveBeenCalledWith(123, {
+        type: 'time',
+        value: DEFAULT_SUMMARY_HOURS,
+      }, 456);
+    });
+
+    it('should pass undefined threadId for non-forum chats', async () => {
+      const message = createMockMessage(123);
+
+      await handler.execute(message, []);
+
+      expect(mockGenerateSummary).toHaveBeenCalledWith(123, {
+        type: 'time',
+        value: DEFAULT_SUMMARY_HOURS,
+      }, undefined);
     });
   });
 });

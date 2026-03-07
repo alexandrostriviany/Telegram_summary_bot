@@ -422,8 +422,8 @@ export async function handler(
 
       const summaryHandler = createSummaryHandler(
         sendMsg,
-        async (chatId: number, range) => {
-          const rawSummary = await summaryEngine.generateSummary(chatId, range);
+        async (chatId: number, range, threadId?: number) => {
+          const rawSummary = await summaryEngine.generateSummary(chatId, range, threadId);
           return summaryFormatter.format(rawSummary);
         },
         creditsStore

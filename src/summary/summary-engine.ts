@@ -69,12 +69,13 @@ const MIN_MESSAGES_PER_CHUNK = 5;
 export interface SummaryEngine {
   /**
    * Generate a summary for a chat based on the specified range
-   * 
+   *
    * @param chatId - The Telegram chat ID to summarize
    * @param range - The message range (time-based or count-based)
+   * @param threadId - Optional forum topic thread ID to scope the summary
    * @returns Promise resolving to the generated summary
    */
-  generateSummary(chatId: number, range: MessageRange): Promise<string>;
+  generateSummary(chatId: number, range: MessageRange, threadId?: number): Promise<string>;
 }
 
 // ============================================================================
@@ -144,9 +145,9 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * 
    * **Validates: Requirements 3.1, 3.2, 3.3**
    */
-  async generateSummary(chatId: number, range: MessageRange): Promise<string> {
-    // Fetch messages based on the range
-    const messages = await this.fetchMessages(chatId, range);
+  async generateSummary(chatId: number, range: MessageRange, threadId?: number): Promise<string> {
+    // Fetch messages based on the range (scoped to forum topic if threadId is set)
+    const messages = await this.fetchMessages(chatId, range, threadId);
 
     if (messages.length === 0) {
       throw new NoMessagesError();
@@ -185,8 +186,8 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * **Validates: Requirements 3.2** - Time-based range
    * **Validates: Requirements 3.3** - Count-based range
    */
-  async fetchMessages(chatId: number, range: MessageRange): Promise<StoredMessage[]> {
-    const query: MessageQuery = { chatId };
+  async fetchMessages(chatId: number, range: MessageRange, threadId?: number): Promise<StoredMessage[]> {
+    const query: MessageQuery = { chatId, threadId };
 
     if (range.type === 'time') {
       // Time-based range: calculate start time from hours

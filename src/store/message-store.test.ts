@@ -281,6 +281,41 @@ describe('DynamoDBMessageStore', () => {
       expect(result).toEqual([]);
     });
 
+    it('should add FilterExpression for threadId when specified', async () => {
+      mockSend.mockResolvedValueOnce({ Items: [] });
+
+      const query: MessageQuery = {
+        chatId: 123456,
+        startTime: 1700000000000,
+        endTime: 1700100000000,
+        threadId: 42,
+      };
+
+      await store.query(query);
+
+      expect(QueryCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          KeyConditionExpression: 'chatId = :chatId AND #ts BETWEEN :startTime AND :endTime',
+          FilterExpression: 'threadId = :threadId',
+          ExpressionAttributeValues: expect.objectContaining({
+            ':chatId': { N: '123456' },
+            ':threadId': { N: '42' },
+          }),
+        })
+      );
+    });
+
+    it('should not add FilterExpression when threadId is undefined', async () => {
+      mockSend.mockResolvedValueOnce({ Items: [] });
+
+      const query: MessageQuery = { chatId: 123456 };
+
+      await store.query(query);
+
+      const callArgs = (QueryCommand as unknown as jest.Mock).mock.calls[0][0];
+      expect(callArgs.FilterExpression).toBeUndefined();
+    });
+
     it('should include optional fields in query results', async () => {
       const mockItems = [
         {

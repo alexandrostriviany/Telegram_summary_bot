@@ -180,21 +180,27 @@ export interface StoredMessage {
 export interface MessageQuery {
   /** Telegram chat ID to query messages from */
   chatId: number;
-  /** 
+  /**
    * Start of time range in milliseconds (optional).
    * Messages with timestamp >= startTime will be included.
    */
   startTime?: number;
-  /** 
+  /**
    * End of time range in milliseconds (optional).
    * Messages with timestamp <= endTime will be included.
    */
   endTime?: number;
-  /** 
+  /**
    * Maximum number of messages to return (optional).
    * When specified, returns the N most recent messages.
    */
   limit?: number;
+  /**
+   * Forum topic thread ID (optional).
+   * When specified, only messages from this topic are returned.
+   * In Telegram supergroups with forum mode, all topics share the same chatId.
+   */
+  threadId?: number;
 }
 
 /**

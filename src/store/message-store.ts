@@ -231,7 +231,7 @@ export class DynamoDBMessageStore implements MessageStore {
    * **Validates: Requirements 3.3** - Query by count (limit)
    */
   async query(query: MessageQuery): Promise<StoredMessage[]> {
-    const { chatId, startTime, endTime, limit } = query;
+    const { chatId, startTime, endTime, limit, threadId } = query;
 
     // Build the key condition expression
     let keyConditionExpression = 'chatId = :chatId';
@@ -258,18 +258,28 @@ export class DynamoDBMessageStore implements MessageStore {
     const isCountQuery = limit !== undefined && startTime === undefined && endTime === undefined;
     const scanIndexForward = !isCountQuery;
 
-    // Only include ExpressionAttributeNames if we're using #ts in the expression
+    // Build ExpressionAttributeNames dynamically
+    const expressionAttributeNames: Record<string, string> = {};
     const hasTimestampCondition = startTime !== undefined || endTime !== undefined;
-    
+    if (hasTimestampCondition) {
+      expressionAttributeNames['#ts'] = 'timestamp'; // timestamp is a reserved word in DynamoDB
+    }
+
+    // Filter by forum topic threadId when specified
+    let filterExpression: string | undefined;
+    if (threadId !== undefined) {
+      filterExpression = 'threadId = :threadId';
+      expressionAttributeValues[':threadId'] = { N: String(threadId) };
+    }
+
     const command = new QueryCommand({
       TableName: this.tableName,
       KeyConditionExpression: keyConditionExpression,
       ExpressionAttributeValues: expressionAttributeValues,
-      ...(hasTimestampCondition && {
-        ExpressionAttributeNames: {
-          '#ts': 'timestamp', // timestamp is a reserved word in DynamoDB
-        },
+      ...(Object.keys(expressionAttributeNames).length > 0 && {
+        ExpressionAttributeNames: expressionAttributeNames,
       }),
+      ...(filterExpression && { FilterExpression: filterExpression }),
       ScanIndexForward: scanIndexForward,
       Limit: limit,
     });
