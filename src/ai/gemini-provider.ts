@@ -72,7 +72,7 @@ interface GeminiErrorResponse {
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /** Default model for Gemini provider */
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 /** Maximum context tokens (conservative limit) */
 const MAX_CONTEXT_TOKENS = 8192;
@@ -85,6 +85,12 @@ const DEFAULT_TEMPERATURE = 0.3;
 
 /** Request timeout in milliseconds */
 const REQUEST_TIMEOUT_MS = 30000;
+
+/** Maximum number of retries for transient errors (429, 5xx) */
+const MAX_RETRIES = 3;
+
+/** Base delay in milliseconds for exponential backoff */
+const RETRY_BASE_DELAY_MS = 1000;
 
 // ============================================================================
 // Gemini Provider Implementation
@@ -194,56 +200,80 @@ export class GeminiProvider implements AIProvider {
    */
   private async makeApiRequest(requestBody: GeminiRequest): Promise<GeminiResponse> {
     const url = `${GEMINI_API_BASE_URL}/${this.model}:generateContent?key=${this.apiKey}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let lastError: AIProviderError | undefined;
 
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        await this.handleErrorResponse(response);
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        console.log(`Gemini API retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
 
-      const data = await response.json() as GeminiResponse;
-      return data;
-    } catch (error) {
-      clearTimeout(timeoutId);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-      if (error instanceof Error && error.name === 'AbortError') {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const isRetryable = response.status === 429 || response.status >= 500;
+          if (isRetryable && attempt < MAX_RETRIES) {
+            console.error(`Gemini API error (status ${response.status}), will retry`);
+            lastError = new AIProviderError(
+              `Gemini API returned status ${response.status}`,
+              'gemini'
+            );
+            continue;
+          }
+          await this.handleErrorResponse(response);
+        }
+
+        const data = await response.json() as GeminiResponse;
+        return data;
+      } catch (error) {
+        clearTimeout(timeoutId);
+
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new AIProviderError(
+            'Request timed out. Please try again.',
+            'gemini',
+            error
+          );
+        }
+
+        if (error instanceof Error && error.message.includes('fetch')) {
+          throw new AIProviderError(
+            'Unable to connect to Gemini. Please check your internet connection.',
+            'gemini',
+            error
+          );
+        }
+
+        if (error instanceof AIProviderError) {
+          throw error;
+        }
+
         throw new AIProviderError(
-          'Request timed out. Please try again.',
+          'An unexpected error occurred while generating the summary.',
           'gemini',
-          error
+          error instanceof Error ? error : new Error(String(error))
         );
       }
-
-      if (error instanceof Error && error.message.includes('fetch')) {
-        throw new AIProviderError(
-          'Unable to connect to Gemini. Please check your internet connection.',
-          'gemini',
-          error
-        );
-      }
-
-      if (error instanceof AIProviderError) {
-        throw error;
-      }
-
-      throw new AIProviderError(
-        'An unexpected error occurred while generating the summary.',
-        'gemini',
-        error instanceof Error ? error : new Error(String(error))
-      );
     }
+
+    throw lastError ?? new AIProviderError(
+      'Failed after retries. Please try again later.',
+      'gemini'
+    );
   }
 
   /**

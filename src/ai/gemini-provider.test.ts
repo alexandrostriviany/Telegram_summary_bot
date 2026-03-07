@@ -118,7 +118,7 @@ describe('GeminiProvider', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, options] = mockFetch.mock.calls[0];
-      expect(url).toContain('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent');
+      expect(url).toContain('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
       expect(url).toContain('key=test-gemini-key');
       expect(options?.method).toBe('POST');
       expect(options?.headers).toEqual({
@@ -292,70 +292,89 @@ describe('GeminiProvider', () => {
         await expect(provider.summarize(['Test'])).rejects.toThrow('Authentication failed');
       });
 
-      it('should throw AIProviderError on 429 rate limit', async () => {
-        mockFetch.mockResolvedValue({
+      it('should retry on 429 rate limit then throw', async () => {
+        const errorResponse = {
           ok: false,
           status: 429,
           json: async () => ({
             error: { code: 429, message: 'Resource exhausted', status: 'RESOURCE_EXHAUSTED' },
           }),
-        } as Response);
+        } as Response;
 
-        await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-
-        mockFetch.mockResolvedValue({
-          ok: false,
-          status: 429,
-          json: async () => ({
-            error: { code: 429, message: 'Resource exhausted', status: 'RESOURCE_EXHAUSTED' },
-          }),
-        } as Response);
+        // 1 initial + 3 retries = 4 calls
+        mockFetch
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow('Too many requests');
+        expect(mockFetch).toHaveBeenCalledTimes(4);
       });
 
-      it('should throw AIProviderError on 500 server error', async () => {
-        mockFetch.mockResolvedValue({
+      it('should succeed after transient 429 retry', async () => {
+        const errorResponse = {
+          ok: false,
+          status: 429,
+          json: async () => ({
+            error: { code: 429, message: 'Resource exhausted', status: 'RESOURCE_EXHAUSTED' },
+          }),
+        } as Response;
+        const successResponse = {
+          ok: true,
+          json: async () => ({
+            candidates: [{
+              content: { parts: [{ text: 'Summary after retry' }], role: 'model' },
+              finishReason: 'STOP',
+            }],
+          }),
+        } as Response;
+
+        mockFetch
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(successResponse);
+
+        const result = await provider.summarize(['Test']);
+        expect(result).toBe('Summary after retry');
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      });
+
+      it('should retry on 500 server error then throw', async () => {
+        const errorResponse = {
           ok: false,
           status: 500,
           json: async () => ({
             error: { code: 500, message: 'Internal error', status: 'INTERNAL' },
           }),
-        } as Response);
+        } as Response;
 
-        await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-
-        mockFetch.mockResolvedValue({
-          ok: false,
-          status: 500,
-          json: async () => ({
-            error: { code: 500, message: 'Internal error', status: 'INTERNAL' },
-          }),
-        } as Response);
+        mockFetch
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow('temporarily unavailable');
+        expect(mockFetch).toHaveBeenCalledTimes(4);
       });
 
-      it('should throw AIProviderError on 503 service unavailable', async () => {
-        mockFetch.mockResolvedValue({
+      it('should retry on 503 service unavailable then throw', async () => {
+        const errorResponse = {
           ok: false,
           status: 503,
           json: async () => ({
             error: { code: 503, message: 'Service unavailable', status: 'UNAVAILABLE' },
           }),
-        } as Response);
+        } as Response;
 
-        await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-
-        mockFetch.mockResolvedValue({
-          ok: false,
-          status: 503,
-          json: async () => ({
-            error: { code: 503, message: 'Service unavailable', status: 'UNAVAILABLE' },
-          }),
-        } as Response);
+        mockFetch
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse)
+          .mockResolvedValueOnce(errorResponse);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow('temporarily unavailable');
+        expect(mockFetch).toHaveBeenCalledTimes(4);
       });
 
       it('should throw AIProviderError on context length exceeded', async () => {
