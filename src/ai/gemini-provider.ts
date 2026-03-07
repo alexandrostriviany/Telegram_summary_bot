@@ -383,6 +383,12 @@ export class GeminiProvider implements AIProvider {
 
     // Gemini 2.5 models include thinking parts (thought: true) before the actual response.
     // Skip thinking parts and find the actual content.
+    console.log('Gemini response parts:', JSON.stringify(parts.map(p => ({
+      thought: p.thought ?? false,
+      textLength: p.text?.length ?? 0,
+      textPreview: p.text?.substring(0, 200) ?? '',
+    }))));
+
     const contentPart = parts.find(part => !part.thought && part.text);
     const content = contentPart?.text;
 
@@ -393,6 +399,7 @@ export class GeminiProvider implements AIProvider {
       );
     }
 
+    console.log('Gemini extracted content preview:', content.substring(0, 300));
     return content.trim();
   }
 

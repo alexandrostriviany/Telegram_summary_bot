@@ -194,8 +194,13 @@ export class DefaultSummaryFormatter implements SummaryFormatter {
 
     // Try to parse as structured JSON
     const parsed = tryParseJson(trimmed);
-    if (parsed !== null && validateStructuredSummary(parsed)) {
-      return renderHtml(parsed);
+    if (parsed !== null) {
+      if (validateStructuredSummary(parsed)) {
+        return renderHtml(parsed);
+      }
+      console.warn('summary-formatter: JSON parsed but failed validation, keys:', Object.keys(parsed as object));
+    } else {
+      console.warn('summary-formatter: raw input preview:', trimmed.substring(0, 300));
     }
 
     // Fallback: render as escaped plain text
