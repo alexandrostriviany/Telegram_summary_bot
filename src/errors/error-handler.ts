@@ -51,6 +51,8 @@ export enum ErrorCode {
   INVALID_COMMAND = 'INVALID_COMMAND',
   TELEGRAM_API_ERROR = 'TELEGRAM_API_ERROR',
   CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
+  CREDITS_EXHAUSTED = 'CREDITS_EXHAUSTED',
+  UNAUTHORIZED = 'UNAUTHORIZED',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
@@ -192,6 +194,30 @@ export class ConfigurationError extends BotError {
   }
 }
 
+/**
+ * Error thrown when a user's daily credits are exhausted
+ */
+export class CreditsExhaustedError extends BotError {
+  /** The user ID whose credits are exhausted */
+  public readonly userId?: number;
+
+  constructor(message: string = 'Daily summary credits have been exhausted.', userId?: number) {
+    super(message, ErrorCode.CREDITS_EXHAUSTED);
+    this.name = 'CreditsExhaustedError';
+    this.userId = userId;
+  }
+}
+
+/**
+ * Error thrown when a user is not authorized to perform an action
+ */
+export class UnauthorizedError extends BotError {
+  constructor(message: string = 'You are not authorized to perform this action.') {
+    super(message, ErrorCode.UNAUTHORIZED);
+    this.name = 'UnauthorizedError';
+  }
+}
+
 // ============================================================================
 // User-Friendly Error Messages
 // ============================================================================
@@ -210,6 +236,8 @@ const USER_FRIENDLY_MESSAGES: Record<ErrorCode, string> = {
   [ErrorCode.INVALID_COMMAND]: 'Invalid command. Use /help to see available commands.',
   [ErrorCode.TELEGRAM_API_ERROR]: 'Unable to send message. Please try again.',
   [ErrorCode.CONFIGURATION_ERROR]: 'The bot is not properly configured. Please contact the administrator.',
+  [ErrorCode.CREDITS_EXHAUSTED]: 'Daily summary credits have been used up. Credits reset at midnight UTC.',
+  [ErrorCode.UNAUTHORIZED]: 'You are not authorized to perform this action.',
   [ErrorCode.UNKNOWN_ERROR]: 'Something went wrong. Please try again.',
 };
 

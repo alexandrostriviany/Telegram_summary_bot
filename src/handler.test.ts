@@ -19,6 +19,7 @@ import {
 } from './handler';
 import { TelegramUpdate, Message, StoredMessage } from './types';
 import { MessageStore } from './store/message-store';
+import { CreditsStore } from './store/credits-store';
 import { CommandRouter, createCommandRouter } from './commands/command-router';
 import { TelegramClient } from './telegram/telegram-client';
 
@@ -36,6 +37,22 @@ const mockMessageStore: jest.Mocked<MessageStore> = {
 // Mock TelegramClient
 const mockTelegramClient: jest.Mocked<TelegramClient> = {
   sendMessage: jest.fn().mockResolvedValue(undefined),
+};
+
+// Mock CreditsStore
+const mockCreditsStore: jest.Mocked<CreditsStore> = {
+  getOrCreateUser: jest.fn().mockResolvedValue({
+    userId: 0, dailyLimit: 10, creditsUsedToday: 0,
+    lastResetDate: '2026-03-06', isPaid: false, createdAt: 0,
+  }),
+  consumeCredit: jest.fn().mockResolvedValue(true),
+  getCredits: jest.fn().mockResolvedValue({
+    userId: 0, dailyLimit: 10, creditsUsedToday: 0,
+    lastResetDate: '2026-03-06', isPaid: false, createdAt: 0,
+  }),
+  setDailyLimit: jest.fn().mockResolvedValue(undefined),
+  setChatOwner: jest.fn().mockResolvedValue(undefined),
+  getChatOwner: jest.fn().mockResolvedValue(null),
 };
 
 // Mock sendMessage function for CommandRouter
@@ -298,12 +315,44 @@ describe('handleBotAdded', () => {
 
     const callArgs = mockTelegramClient.sendMessage.mock.calls[0];
     const messageText = callArgs[1];
-    
+
     // Verify welcome message contains privacy information
     expect(messageText).toContain('Privacy');
     expect(messageText).toContain('72 hours');
     expect(messageText).toContain('/summary');
     expect(messageText).toContain('/help');
+  });
+
+  it('should record chat ownership when creditsStore is provided', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 123, type: 'group', title: 'Test Group' },
+      from: { id: 777, first_name: 'Adder' },
+      date: Date.now() / 1000,
+      new_chat_members: [
+        { id: 123456789, first_name: 'SummaryBot' },
+      ],
+    };
+
+    await handleBotAdded(message, mockTelegramClient, mockCreditsStore);
+
+    expect(mockCreditsStore.setChatOwner).toHaveBeenCalledWith(123, 777);
+  });
+
+  it('should not fail if creditsStore is not provided', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 123, type: 'group', title: 'Test Group' },
+      from: { id: 777, first_name: 'Adder' },
+      date: Date.now() / 1000,
+      new_chat_members: [
+        { id: 123456789, first_name: 'SummaryBot' },
+      ],
+    };
+
+    await handleBotAdded(message, mockTelegramClient);
+
+    expect(mockTelegramClient.sendMessage).toHaveBeenCalledTimes(1);
   });
 });
 

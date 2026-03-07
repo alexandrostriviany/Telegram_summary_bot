@@ -105,6 +105,7 @@ Available commands:
 • /summary - Summarize recent messages
 • /summary 2h - Summarize last 2 hours
 • /summary 50 - Summarize last 50 messages
+• /credits - Show remaining daily credits
 • /help - Show help and usage info
 
 Type /help for more information.`;

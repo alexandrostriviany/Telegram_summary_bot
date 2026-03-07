@@ -11,7 +11,8 @@
 
 import { Message, MessageRange } from '../types';
 import { CommandHandler } from './command-router';
-import { handleError, formatErrorForTelegram } from '../errors/error-handler';
+import { handleError, formatErrorForTelegram, CreditsExhaustedError } from '../errors/error-handler';
+import { CreditsStore } from '../store/credits-store';
 
 /**
  * Default summary time window in hours when no parameter is provided
@@ -218,19 +219,23 @@ Type /help for more information.`;
 export class SummaryHandler implements CommandHandler {
   private sendMessage: (chatId: number, text: string) => Promise<void>;
   private generateSummary: (chatId: number, range: MessageRange) => Promise<string>;
+  private creditsStore?: CreditsStore;
 
   /**
    * Create a new SummaryHandler instance
-   * 
+   *
    * @param sendMessage - Function to send messages to Telegram chats
    * @param generateSummary - Function to generate summaries for a chat
+   * @param creditsStore - Optional credits store for credit tracking
    */
   constructor(
     sendMessage: (chatId: number, text: string) => Promise<void>,
-    generateSummary: (chatId: number, range: MessageRange) => Promise<string>
+    generateSummary: (chatId: number, range: MessageRange) => Promise<string>,
+    creditsStore?: CreditsStore
   ) {
     this.sendMessage = sendMessage;
     this.generateSummary = generateSummary;
+    this.creditsStore = creditsStore;
   }
 
   /**
@@ -248,7 +253,7 @@ export class SummaryHandler implements CommandHandler {
    */
   async execute(message: Message, args: string[]): Promise<void> {
     const chatId = message.chat.id;
-    
+
     // Parse the first argument (if any)
     const arg = args.length > 0 ? args[0] : undefined;
     const range = parseSummaryParameter(arg);
@@ -260,6 +265,25 @@ export class SummaryHandler implements CommandHandler {
     }
 
     try {
+      // Check credits before generating summary
+      if (this.creditsStore) {
+        let creditOwnerId: number;
+
+        if (message.chat.type === 'private') {
+          creditOwnerId = message.from?.id ?? 0;
+        } else {
+          const ownership = await this.creditsStore.getChatOwner(chatId);
+          creditOwnerId = ownership ? ownership.ownerUserId : (message.from?.id ?? 0);
+        }
+
+        if (creditOwnerId !== 0) {
+          const consumed = await this.creditsStore.consumeCredit(creditOwnerId);
+          if (!consumed) {
+            throw new CreditsExhaustedError(undefined, creditOwnerId);
+          }
+        }
+      }
+
       // Generate and send the summary
       const summary = await this.generateSummary(chatId, range);
       await this.sendMessage(chatId, summary);
@@ -281,7 +305,8 @@ export class SummaryHandler implements CommandHandler {
  */
 export function createSummaryHandler(
   sendMessage: (chatId: number, text: string) => Promise<void>,
-  generateSummary: (chatId: number, range: MessageRange) => Promise<string>
+  generateSummary: (chatId: number, range: MessageRange) => Promise<string>,
+  creditsStore?: CreditsStore
 ): SummaryHandler {
-  return new SummaryHandler(sendMessage, generateSummary);
+  return new SummaryHandler(sendMessage, generateSummary, creditsStore);
 }

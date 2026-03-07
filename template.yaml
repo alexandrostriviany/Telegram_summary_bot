@@ -34,11 +34,23 @@ Parameters:
   LLMProvider:
     Type: String
     Description: AI provider to use for summarization
-    Default: openai
+    Default: gemini
     AllowedValues:
       - openai
       - bedrock
+      - gemini
   
+  GeminiApiKey:
+    Type: String
+    Description: Google Gemini API key for summarization
+    NoEcho: true
+    Default: ''
+
+  LLMModel:
+    Type: String
+    Description: Model name override for the selected AI provider (empty uses provider default)
+    Default: ''
+
   MessageTTLHours:
     Type: Number
     Description: Hours to retain messages before automatic deletion
@@ -53,6 +65,18 @@ Parameters:
     MinValue: 1
     MaxValue: 72
   
+  AdminUserId:
+    Type: Number
+    Description: Telegram user ID of the bot admin (for /admin commands)
+    Default: 0
+
+  DefaultDailyCredits:
+    Type: Number
+    Description: Default daily summary credits for free users
+    Default: 10
+    MinValue: 1
+    MaxValue: 1000
+
   LogRetentionDays:
     Type: Number
     Description: CloudWatch log retention period in days
@@ -86,13 +110,23 @@ Resources:
           LLM_PROVIDER: !Ref LLMProvider
           TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
           OPENAI_API_KEY: !Ref OpenAIApiKey
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          LLM_MODEL: !Ref LLMModel
           MESSAGE_TTL_HOURS: !Ref MessageTTLHours
           DEFAULT_SUMMARY_HOURS: !Ref DefaultSummaryHours
+          CREDITS_TABLE: !Ref UserCreditsTable
+          CHAT_OWNERSHIP_TABLE: !Ref ChatOwnershipTable
+          ADMIN_USER_ID: !Ref AdminUserId
+          DEFAULT_DAILY_CREDITS: !Ref DefaultDailyCredits
       # IAM policies with least privilege
       # Validates: Requirements 7.2 - Use IAM roles with least-privilege permissions
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MessagesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserCreditsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ChatOwnershipTable
         # Bedrock policy (only needed if using Bedrock provider)
         - Version: '2012-10-17'
           Statement:
@@ -163,6 +197,50 @@ Resources:
         - Key: Environment
           Value: !Ref AWS::StackName
 
+  # DynamoDB table for user credits tracking
+  UserCreditsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-user-credits'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: N
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Application
+          Value: TelegramSummaryBot
+        - Key: Environment
+          Value: !Ref AWS::StackName
+
+  # DynamoDB table for chat-to-owner mapping
+  ChatOwnershipTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-chat-ownership'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: chatId
+          AttributeType: N
+      KeySchema:
+        - AttributeName: chatId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Application
+          Value: TelegramSummaryBot
+        - Key: Environment
+          Value: !Ref AWS::StackName
+
   # CloudWatch Log Group with retention policy
   # Validates: Cost Optimization - Set log retention to 7 days
   TelegramBotFunctionLogGroup:
@@ -196,6 +274,14 @@ Outputs:
     Description: DynamoDB table ARN
     Value: !GetAtt MessagesTable.Arn
   
+  UserCreditsTableName:
+    Description: DynamoDB table name for user credits
+    Value: !Ref UserCreditsTable
+
+  ChatOwnershipTableName:
+    Description: DynamoDB table name for chat ownership
+    Value: !Ref ChatOwnershipTable
+
   ApiEndpoint:
     Description: HTTP API endpoint URL
     Value: !Sub 'https://${TelegramBotApi}.execute-api.${AWS::Region}.amazonaws.com/prod'

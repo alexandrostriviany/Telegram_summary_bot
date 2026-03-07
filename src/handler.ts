@@ -13,10 +13,13 @@ import { DynamoDBMessageStore, MessageStore } from './store/message-store';
 import { CommandRouter, createCommandRouter } from './commands/command-router';
 import { createHelpHandler } from './commands/help-handler';
 import { createSummaryHandler } from './commands/summary-handler';
+import { createCreditsHandler } from './commands/credits-handler';
+import { createAdminHandler } from './commands/admin-handler';
 import { TelegramClient, createTelegramClient } from './telegram/telegram-client';
 import { createSummaryEngine } from './summary/summary-engine';
 import { createSummaryFormatter } from './summary/summary-formatter';
 import { createAIProvider, isAIProviderConfigured } from './ai/ai-provider';
+import { DynamoDBCreditsStore, CreditsStore } from './store/credits-store';
 import { handleError, formatErrorForTelegram } from './errors/error-handler';
 
 // ============================================================================
@@ -30,6 +33,9 @@ let cachedTelegramClient: TelegramClient | null = null;
 /** Cached message store instance */
 let cachedMessageStore: MessageStore | null = null;
 
+/** Cached credits store instance */
+let cachedCreditsStore: CreditsStore | null = null;
+
 /**
  * Reset cached instances (for testing purposes)
  * @internal
@@ -37,6 +43,7 @@ let cachedMessageStore: MessageStore | null = null;
 export function resetCachedInstances(): void {
   cachedTelegramClient = null;
   cachedMessageStore = null;
+  cachedCreditsStore = null;
 }
 
 /**
@@ -57,6 +64,16 @@ function getMessageStore(): MessageStore {
     cachedMessageStore = new DynamoDBMessageStore();
   }
   return cachedMessageStore;
+}
+
+/**
+ * Get or create the credits store (singleton pattern for Lambda reuse)
+ */
+function getCreditsStore(): CreditsStore {
+  if (!cachedCreditsStore) {
+    cachedCreditsStore = new DynamoDBCreditsStore();
+  }
+  return cachedCreditsStore;
 }
 
 /**
@@ -132,10 +149,21 @@ function isBotAddedToGroup(newMembers: User[]): boolean {
  */
 export async function handleBotAdded(
   message: Message,
-  telegramClient: TelegramClient
+  telegramClient: TelegramClient,
+  creditsStore?: CreditsStore
 ): Promise<void> {
   console.log('Bot added to group:', message.chat.id, message.chat.title);
   await telegramClient.sendMessage(message.chat.id, WELCOME_MESSAGE);
+
+  // Record chat ownership — the user who added the bot owns the credits for this chat
+  if (creditsStore && message.from) {
+    try {
+      await creditsStore.setChatOwner(message.chat.id, message.from.id);
+      console.log('Chat ownership set:', message.chat.id, '->', message.from.id);
+    } catch (error) {
+      console.error('Failed to set chat ownership:', error);
+    }
+  }
 }
 
 /**
@@ -294,7 +322,8 @@ export async function handleWebhook(
   update: TelegramUpdate,
   messageStore: MessageStore,
   commandRouter: CommandRouter,
-  telegramClient: TelegramClient
+  telegramClient: TelegramClient,
+  creditsStore?: CreditsStore
 ): Promise<void> {
   // Check if we have a message to process
   if (!update.message) {
@@ -306,10 +335,10 @@ export async function handleWebhook(
 
   // Route based on message type
   // Priority: bot added > command > text message > ignore
-  
+
   if (isBotAddedEvent(message)) {
-    // Bot was added to a group - send welcome message
-    await handleBotAdded(message, telegramClient);
+    // Bot was added to a group - send welcome message and record ownership
+    await handleBotAdded(message, telegramClient, creditsStore);
   } else if (isCommand(message)) {
     // Handle bot commands using the command router
     await handleCommand(message, commandRouter);
@@ -360,33 +389,42 @@ export async function handler(
     // Get cached instances (Lambda cold start optimization)
     const telegramClient = getTelegramClient();
     const messageStore = getMessageStore();
+    const creditsStore = getCreditsStore();
+
+    const sendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
 
     // Create command router with Telegram client's sendMessage method
-    const commandRouter = createCommandRouter(
-      (chatId: number, text: string) => telegramClient.sendMessage(chatId, text)
-    );
-    
+    const commandRouter = createCommandRouter(sendMsg);
+
     // Register command handlers
     // Register /help command handler
-    // **Validates: Requirements 4.1, 4.2**
-    const helpHandler = createHelpHandler(
-      (chatId: number, text: string) => telegramClient.sendMessage(chatId, text)
-    );
+    const helpHandler = createHelpHandler(sendMsg);
     commandRouter.register('help', helpHandler);
-    
+
+    // Register /credits command handler
+    const creditsHandler = createCreditsHandler(sendMsg, creditsStore);
+    commandRouter.register('credits', creditsHandler);
+
+    // Register /admin command handler
+    const adminUserId = parseInt(process.env.ADMIN_USER_ID ?? '0', 10);
+    if (adminUserId !== 0) {
+      const adminHandler = createAdminHandler(sendMsg, creditsStore, adminUserId);
+      commandRouter.register('admin', adminHandler);
+    }
+
     // Register /summary command handler
-    // **Validates: Requirements 3.1, 3.2, 3.3**
     if (isAIProviderConfigured()) {
       const aiProvider = createAIProvider();
       const summaryEngine = createSummaryEngine(messageStore, aiProvider);
       const summaryFormatter = createSummaryFormatter();
-      
+
       const summaryHandler = createSummaryHandler(
-        (chatId: number, text: string) => telegramClient.sendMessage(chatId, text),
+        sendMsg,
         async (chatId: number, range) => {
           const rawSummary = await summaryEngine.generateSummary(chatId, range);
           return summaryFormatter.format(rawSummary);
-        }
+        },
+        creditsStore
       );
       commandRouter.register('summary', summaryHandler);
     } else {
@@ -394,7 +432,7 @@ export async function handler(
     }
 
     // Process the webhook update
-    await handleWebhook(update, messageStore, commandRouter, telegramClient);
+    await handleWebhook(update, messageStore, commandRouter, telegramClient, creditsStore);
 
     // Return success response to Telegram
     // Telegram expects a 200 response to acknowledge receipt

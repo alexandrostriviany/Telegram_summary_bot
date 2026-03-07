@@ -35,6 +35,7 @@ export const HELP_MESSAGE = `📚 *Telegram Summary Bot Help*
 • \`/summary 2h\` - Summarize messages from the last 2 hours
 • \`/summary 30m\` - Summarize messages from the last 30 minutes
 • \`/summary 50\` - Summarize the last 50 messages
+• \`/credits\` - Show remaining daily credits
 • \`/help\` - Show this help message
 
 📝 *Usage Examples*
@@ -120,6 +121,7 @@ export function getPlainTextHelpMessage(): string {
 • /summary 2h - Summarize messages from the last 2 hours
 • /summary 30m - Summarize messages from the last 30 minutes
 • /summary 50 - Summarize the last 50 messages
+• /credits - Show remaining daily credits
 • /help - Show this help message
 
 📝 Usage Examples
