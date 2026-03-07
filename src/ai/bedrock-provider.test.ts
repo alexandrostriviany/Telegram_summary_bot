@@ -152,7 +152,7 @@ describe('BedrockProvider', () => {
 
       const commandCall = MockInvokeModelCommand.mock.calls[0][0];
       const body = JSON.parse(commandCall.body as string);
-      expect(body.max_tokens).toBe(500);
+      expect(body.max_tokens).toBe(2048);
       expect(body.temperature).toBe(0.3);
     });
 

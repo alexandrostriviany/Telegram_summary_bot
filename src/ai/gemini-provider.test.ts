@@ -181,7 +181,7 @@ describe('GeminiProvider', () => {
       await provider.summarize(['Test message']);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
-      expect(body.generationConfig.maxOutputTokens).toBe(1024);
+      expect(body.generationConfig.maxOutputTokens).toBe(2048);
       expect(body.generationConfig.temperature).toBe(0.3);
     });
 

@@ -14,21 +14,19 @@
  * questions. All providers share this prompt to ensure consistent output.
  * Uses short keys ("s", "q") to minimize token overhead.
  */
-export const SUMMARY_SYSTEM_PROMPT = `You summarize chat conversations into a short thematic overview. Return a JSON object with keys "s" (array of 3-7 high-level topic strings) and "q" (array of open question strings, empty array if none).
+export const SUMMARY_SYSTEM_PROMPT = `You produce a SHORT thematic overview of a chat conversation. Return a JSON object with keys "s" (array of bullet strings) and "q" (array of open question strings, empty array if none).
 
-CRITICAL: Do NOT summarize each message individually. Group related messages into topics and synthesize them into one bullet per topic.
+CRITICAL RULES — follow strictly:
+1. Use as FEW bullets as possible. If the whole conversation is about one topic, return ONE bullet. Small chats (under 30 messages) should have 1-3 bullets. Large chats may have up to 5.
+2. Do NOT summarize each message individually. Merge ALL related messages into a single bullet per topic.
+3. You MUST write in the dominant language of the chat. NEVER write in English unless the chat is in English. If messages are in Russian, translate the summary to Ukrainian.
+4. Mention key participants with @ prefix.
+5. Prioritize decisions, action items, and disagreements.
+6. Attribute forwarded messages to the original author.
+7. Return ONLY valid JSON, no other text.
 
-Example input: 12 messages about deadlines, budgets, and a meeting
-Example output:
-{"s":["Q1 deadline debate — @alice pushed for March, @bob and @carol argued it's too aggressive given current budget","Budget concerns — the team flagged that the new project exceeds estimates by 20%, @dave proposed cutting scope","Action: review meeting scheduled for next Thursday to finalize both timeline and budget"],"q":["Should we postpone the launch?"]}
-
-Rules:
-1. CRITICAL: You MUST write the summary in the dominant language of the chat messages. NEVER write in English unless the chat is in English. If messages are in Russian, translate the summary to Ukrainian
-2. Produce 3-7 bullets maximum — each bullet covers a TOPIC, not a single message
-3. Merge related messages into one bullet; mention key participants with @
-4. Prioritize decisions, action items, and disagreements
-5. Attribute forwarded messages to the original author
-6. Return ONLY valid JSON, no other text`;
+Example — 15 messages where people discuss a deadline, raise budget concerns, and schedule a meeting:
+{"s":["Q1 launch timeline and budget — @alice proposed March deadline, @bob and @carol pushed back citing 20% budget overrun; team agreed to a review meeting Thursday to finalize"],"q":["Should we postpone the launch?"]}`;
 
 /**
  * JSON schema for the summary response, used by providers that support

@@ -82,7 +82,7 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 const MAX_CONTEXT_TOKENS = 8192;
 
 /** Default max tokens for response generation */
-const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_MAX_TOKENS = 2048;
 
 /** Default temperature for focused summarization */
 const DEFAULT_TEMPERATURE = 0.3;

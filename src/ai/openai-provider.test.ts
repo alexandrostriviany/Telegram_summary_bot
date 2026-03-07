@@ -144,7 +144,7 @@ describe('OpenAIProvider', () => {
       await provider.summarize(['Test message']);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
-      expect(body.max_tokens).toBe(1024);
+      expect(body.max_tokens).toBe(2048);
       expect(body.temperature).toBe(0.3);
     });
 

@@ -70,7 +70,7 @@ const ANTHROPIC_VERSION = 'bedrock-2023-05-31';
 const MAX_CONTEXT_TOKENS = 8192;
 
 /** Default max tokens for response generation */
-const DEFAULT_MAX_TOKENS = 500;
+const DEFAULT_MAX_TOKENS = 2048;
 
 /** Default temperature for focused summarization */
 const DEFAULT_TEMPERATURE = 0.3;
