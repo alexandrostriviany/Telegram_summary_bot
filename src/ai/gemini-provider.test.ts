@@ -441,6 +441,29 @@ describe('GeminiProvider', () => {
         await expect(provider.summarize(['Test'])).rejects.toThrow('Unable to connect');
       });
 
+      it('should skip thinking parts and extract actual content', async () => {
+        const mockResponse = {
+          candidates: [{
+            content: {
+              parts: [
+                { text: 'Let me analyze this conversation...', thought: true },
+                { text: '{"overview":"Test","topics":[],"questions":[]}' },
+              ],
+              role: 'model',
+            },
+            finishReason: 'STOP',
+          }],
+        };
+
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockResponse,
+        } as Response);
+
+        const result = await provider.summarize(['Test message']);
+        expect(result).toBe('{"overview":"Test","topics":[],"questions":[]}');
+      });
+
       it('should throw AIProviderError on empty candidates array', async () => {
         mockFetch.mockResolvedValue({
           ok: true,

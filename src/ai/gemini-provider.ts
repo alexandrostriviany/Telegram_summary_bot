@@ -42,7 +42,7 @@ interface GeminiRequest {
 interface GeminiResponse {
   candidates?: Array<{
     content: {
-      parts: Array<{ text: string }>;
+      parts: Array<{ text: string; thought?: boolean }>;
       role: string;
     };
     finishReason: string;
@@ -373,7 +373,19 @@ export class GeminiProvider implements AIProvider {
       );
     }
 
-    const content = response.candidates[0]?.content?.parts?.[0]?.text;
+    const parts = response.candidates[0]?.content?.parts;
+    if (!parts || parts.length === 0) {
+      throw new AIProviderError(
+        'Unable to generate summary. Please try again.',
+        'gemini'
+      );
+    }
+
+    // Gemini 2.5 models include thinking parts (thought: true) before the actual response.
+    // Skip thinking parts and find the actual content.
+    const contentPart = parts.find(part => !part.thought && part.text);
+    const content = contentPart?.text;
+
     if (!content) {
       throw new AIProviderError(
         'Unable to generate summary. Please try again.',
