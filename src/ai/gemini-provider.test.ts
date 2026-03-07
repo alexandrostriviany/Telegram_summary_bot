@@ -133,6 +133,8 @@ describe('GeminiProvider', () => {
       expect(body.systemInstruction).toBeDefined();
       expect(body.systemInstruction.parts[0].text).toBe(SUMMARY_SYSTEM_PROMPT);
       expect(body.generationConfig.responseMimeType).toBe('application/json');
+      expect(body.generationConfig.responseSchema).toBeDefined();
+      expect(body.generationConfig.responseSchema.required).toEqual(['overview', 'topics', 'questions']);
     });
 
     it('should use LLM_MODEL env var in API URL', async () => {

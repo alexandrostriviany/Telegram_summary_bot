@@ -32,6 +32,7 @@ interface GeminiRequest {
     maxOutputTokens: number;
     temperature: number;
     responseMimeType?: string;
+    responseSchema?: Record<string, unknown>;
   };
 }
 
@@ -91,6 +92,36 @@ const MAX_RETRIES = 3;
 
 /** Base delay in milliseconds for exponential backoff */
 const RETRY_BASE_DELAY_MS = 1000;
+
+/** JSON schema enforced at the API level for structured output */
+const SUMMARY_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    overview: { type: 'STRING', description: '1-2 sentence overview of the conversation' },
+    topics: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING', description: 'Topic name' },
+          points: {
+            type: 'ARRAY',
+            items: { type: 'STRING' },
+            description: 'Key points with @username attribution',
+          },
+        },
+        required: ['title', 'points'],
+      },
+      description: '3-5 main topics',
+    },
+    questions: {
+      type: 'ARRAY',
+      items: { type: 'STRING' },
+      description: 'Open/unresolved questions, empty array if none',
+    },
+  },
+  required: ['overview', 'topics', 'questions'],
+};
 
 // ============================================================================
 // Gemini Provider Implementation
@@ -164,6 +195,7 @@ export class GeminiProvider implements AIProvider {
         maxOutputTokens: maxTokens,
         temperature: temperature,
         responseMimeType: 'application/json',
+        responseSchema: SUMMARY_RESPONSE_SCHEMA,
       },
     };
 
