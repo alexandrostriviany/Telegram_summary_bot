@@ -60,6 +60,10 @@ jobs:
           fi
 
           sam deploy \
+            --stack-name telegram-summary-bot \
+            --s3-prefix telegram-summary-bot \
+            --region ${{ vars.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
             --parameter-overrides $PARAMS
@@ -67,7 +71,7 @@ jobs:
       - name: Get stack outputs
         id: get-outputs
         run: |
-          STACK_NAME=$(grep -m1 'stack_name' samconfig.toml 2>/dev/null | tr -d ' "' | cut -d= -f2 || echo "telegram-summary-bot")
+          STACK_NAME="telegram-summary-bot"
           echo "stack_name=$STACK_NAME" >> "$GITHUB_OUTPUT"
 
           OUTPUTS=$(aws cloudformation describe-stacks \
@@ -106,14 +110,18 @@ jobs:
 
       - name: Deploy monitoring stack
         run: |
+          MON_PARAMS="LambdaFunctionName=${{ steps.get-outputs.outputs.function_name }}"
+          MON_PARAMS="$MON_PARAMS HttpApiId=${{ steps.get-outputs.outputs.http_api_id }}"
+          MON_PARAMS="$MON_PARAMS DynamoDBTableName=${{ steps.get-outputs.outputs.messages_table }}"
+          MON_PARAMS="$MON_PARAMS UserCreditsTableName=${{ steps.get-outputs.outputs.credits_table }}"
+          MON_PARAMS="$MON_PARAMS ChatOwnershipTableName=${{ steps.get-outputs.outputs.ownership_table }}"
+
+          if [ -n "${{ secrets.ADMIN_EMAIL }}" ]; then
+            MON_PARAMS="$MON_PARAMS AdminEmail=${{ secrets.ADMIN_EMAIL }}"
+          fi
+
           aws cloudformation deploy \
             --template-file monitoring/cloudwatch-monitoring.yaml \
             --stack-name "${{ steps.get-outputs.outputs.stack_name }}-monitoring" \
             --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              LambdaFunctionName=${{ steps.get-outputs.outputs.function_name }} \
-              HttpApiId=${{ steps.get-outputs.outputs.http_api_id }} \
-              DynamoDBTableName=${{ steps.get-outputs.outputs.messages_table }} \
-              UserCreditsTableName=${{ steps.get-outputs.outputs.credits_table }} \
-              ChatOwnershipTableName=${{ steps.get-outputs.outputs.ownership_table }} \
-              AdminEmail=${{ secrets.ADMIN_EMAIL || '' }}
+            --parameter-overrides $MON_PARAMS
