@@ -31,6 +31,9 @@ interface GeminiRequest {
   generationConfig: {
     maxOutputTokens: number;
     temperature: number;
+    thinkingConfig?: {
+      thinkingBudget: number;
+    };
   };
 }
 
@@ -162,6 +165,9 @@ export class GeminiProvider implements AIProvider {
       generationConfig: {
         maxOutputTokens: maxTokens,
         temperature: temperature,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
       },
     };
 
