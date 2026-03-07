@@ -178,6 +178,7 @@ export class GeminiProvider implements AIProvider {
     try {
       const response = await this.makeApiRequest(requestBody);
       const text = this.extractSummaryFromResponse(response);
+      console.log('Gemini raw summary response:', text);
       const usage = this.extractUsageFromResponse(response);
       return { text, usage };
     } catch (error) {
