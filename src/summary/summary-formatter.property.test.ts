@@ -40,8 +40,11 @@ describe('Property Tests: Summary Output Formatting', () => {
         fc.string({ minLength: 1, maxLength: 300 }).filter(s => s.trim().length > 0),
         (input: string) => {
           const result = formatter.format(input);
-          // After escaping, raw < > should not appear unless part of &lt; &gt;
-          const withoutEntities = result
+          // After removing our own HTML tags and entities, raw < > should not appear
+          const withoutOurTags = result
+            .replace(/<b>/g, '')
+            .replace(/<\/b>/g, '');
+          const withoutEntities = withoutOurTags
             .replace(/&amp;/g, '')
             .replace(/&lt;/g, '')
             .replace(/&gt;/g, '');
@@ -54,16 +57,24 @@ describe('Property Tests: Summary Output Formatting', () => {
     );
   });
 
-  it('should correctly parse and render valid summary JSON', () => {
+  it('should correctly parse and render valid topic-based JSON', () => {
     fc.assert(
       fc.property(
-        fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0), { minLength: 1, maxLength: 5 }),
+        fc.array(
+          fc.record({
+            n: fc.string({ minLength: 1, maxLength: 30 }).filter(s => s.trim().length > 0),
+            h: fc.array(
+              fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+              { minLength: 1, maxLength: 3 }
+            ),
+          }),
+          { minLength: 1, maxLength: 5 }
+        ),
         fc.array(fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0), { minLength: 0, maxLength: 3 }),
-        (points: string[], questions: string[]) => {
-          const json = JSON.stringify({ s: points, q: questions });
+        (topics, questions) => {
+          const json = JSON.stringify({ t: topics, q: questions });
           const result = formatter.format(json);
-          expect(result).toContain('🧵 Summary');
-          // Should contain at least the first point (HTML-escaped)
+          expect(result).toContain('🧵');
           expect(result).toContain('•');
           return true;
         }
@@ -90,9 +101,15 @@ describe('Property Tests: Summary Output Formatting', () => {
   it('should never exceed 4000 characters for JSON input', () => {
     fc.assert(
       fc.property(
-        fc.array(fc.string({ minLength: 10, maxLength: 200 }), { minLength: 1, maxLength: 50 }),
-        (points: string[]) => {
-          const json = JSON.stringify({ s: points, q: [] });
+        fc.array(
+          fc.record({
+            n: fc.string({ minLength: 5, maxLength: 30 }),
+            h: fc.array(fc.string({ minLength: 10, maxLength: 200 }), { minLength: 1, maxLength: 5 }),
+          }),
+          { minLength: 1, maxLength: 50 }
+        ),
+        (topics) => {
+          const json = JSON.stringify({ t: topics, q: [] });
           const result = formatter.format(json);
           expect(result.length).toBeLessThanOrEqual(4003); // 4000 + '...'
           return true;

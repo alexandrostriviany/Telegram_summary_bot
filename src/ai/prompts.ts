@@ -10,23 +10,27 @@
 /**
  * System prompt for chat summarization.
  *
- * Instructs the LLM to return a JSON object with summary points and open
- * questions. All providers share this prompt to ensure consistent output.
- * Uses short keys ("s", "q") to minimize token overhead.
+ * Instructs the LLM to return a JSON object with topics (each having a name
+ * and highlights) and open questions. All providers share this prompt to
+ * ensure consistent output.
  */
-export const SUMMARY_SYSTEM_PROMPT = `You produce a SHORT thematic overview of a chat conversation. Return a JSON object with keys "s" (array of bullet strings) and "q" (array of open question strings, empty array if none).
+export const SUMMARY_SYSTEM_PROMPT = `You produce a structured thematic overview of a chat conversation. Return a JSON object with keys "t" (array of topic objects) and "q" (array of open question strings, empty array if none).
 
-CRITICAL RULES — follow strictly:
-1. Use as FEW bullets as possible. If the whole conversation is about one topic, return ONE bullet. Small chats (under 30 messages) should have 1-3 bullets. Large chats may have up to 5.
-2. Do NOT summarize each message individually. Merge ALL related messages into a single bullet per topic.
-3. You MUST write in the dominant language of the chat. NEVER write in English unless the chat is in English. If messages are in Russian, translate the summary to Ukrainian.
-4. Mention key participants with @ prefix.
+Each topic object has:
+- "n": short topic name (2-5 words)
+- "h": array of highlight strings (key points, decisions, actions for this topic)
+
+RULES:
+1. Each distinct topic gets its OWN object. Do NOT merge unrelated topics into one.
+2. Keep 1-5 topics depending on conversation size. Each topic should have 1-4 highlights.
+3. You MUST write in the dominant language of the chat. NEVER write in English unless the chat is in English. If messages are in Russian, translate to Ukrainian.
+4. Mention key participants with @ prefix in highlights.
 5. Prioritize decisions, action items, and disagreements.
 6. Attribute forwarded messages to the original author.
 7. Return ONLY valid JSON, no other text.
 
-Example — 15 messages where people discuss a deadline, raise budget concerns, and schedule a meeting:
-{"s":["Q1 launch timeline and budget — @alice proposed March deadline, @bob and @carol pushed back citing 20% budget overrun; team agreed to a review meeting Thursday to finalize"],"q":["Should we postpone the launch?"]}`;
+Example — a chat about cooking, a trip, and weekend plans:
+{"t":[{"n":"Готування сирників","h":["@alice показала як Тіма готує сирники","@bob попередив про безпеку, але @alice вважає це корисним досвідом"]},{"n":"Поїздка в планетарій","h":["@carol повезла дитину в планетарій вперше","їхали 45 хвилин на велосипеді"]}],"q":["Чи підійде цей планетарій для малечі?"]}`;
 
 /**
  * JSON schema for the summary response, used by providers that support
@@ -35,10 +39,24 @@ Example — 15 messages where people discuss a deadline, raise budget concerns, 
 export const SUMMARY_RESPONSE_SCHEMA = {
   type: 'OBJECT' as const,
   properties: {
-    s: {
+    t: {
       type: 'ARRAY' as const,
-      items: { type: 'STRING' as const },
-      description: 'Summary bullet points',
+      items: {
+        type: 'OBJECT' as const,
+        properties: {
+          n: {
+            type: 'STRING' as const,
+            description: 'Short topic name (2-5 words)',
+          },
+          h: {
+            type: 'ARRAY' as const,
+            items: { type: 'STRING' as const },
+            description: 'Highlight bullet points for this topic',
+          },
+        },
+        required: ['n', 'h'],
+      },
+      description: 'Array of topic objects with name and highlights',
     },
     q: {
       type: 'ARRAY' as const,
@@ -46,7 +64,7 @@ export const SUMMARY_RESPONSE_SCHEMA = {
       description: 'Open questions (empty array if none)',
     },
   },
-  required: ['s', 'q'],
+  required: ['t', 'q'],
 };
 
 /**
@@ -55,4 +73,4 @@ export const SUMMARY_RESPONSE_SCHEMA = {
  * Used by the summary engine when a conversation is too long and must be
  * split into chunks that are summarized separately then combined.
  */
-export const COMBINE_SUMMARIES_PROMPT = 'Merge these partial summaries into one. Deduplicate overlapping points. Return the same JSON format with "s" and "q" keys.';
+export const COMBINE_SUMMARIES_PROMPT = 'Merge these partial summaries into one. Deduplicate overlapping topics and combine their highlights. Return the same JSON format with "t" and "q" keys.';

@@ -95,7 +95,7 @@ describe('GeminiProvider', () => {
 
     it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result.text).toBe('{"s":[],"q":[]}');
+      expect(result.text).toBe('{"t":[],"q":[]}');
     });
 
     it('should make API request with correct parameters', async () => {

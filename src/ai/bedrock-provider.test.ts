@@ -113,9 +113,9 @@ describe('BedrockProvider', () => {
       provider = new BedrockProvider();
     });
 
-    it('should return empty summary message for empty messages array', async () => {
+    it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result.text).toContain('No messages to summarize');
+      expect(result.text).toBe('{"t":[],"q":[]}');
       expect(mockSend).not.toHaveBeenCalled();
     });
 

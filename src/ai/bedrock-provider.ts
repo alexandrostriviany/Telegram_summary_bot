@@ -129,7 +129,7 @@ export class BedrockProvider implements AIProvider {
    */
   async summarize(messages: string[], options?: SummarizeOptions): Promise<SummarizeResult> {
     if (messages.length === 0) {
-      return { text: '🧵 **Summary**\nNo messages to summarize.' };
+      return { text: '{"t":[],"q":[]}' };
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;

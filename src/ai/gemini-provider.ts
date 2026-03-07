@@ -145,7 +145,7 @@ export class GeminiProvider implements AIProvider {
    */
   async summarize(messages: string[], options?: SummarizeOptions): Promise<SummarizeResult> {
     if (messages.length === 0) {
-      return { text: '{"s":[],"q":[]}' };
+      return { text: '{"t":[],"q":[]}' };
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;

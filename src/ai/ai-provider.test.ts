@@ -182,7 +182,7 @@ describe('AI Provider Module', () => {
 
     it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result.text).toBe('{"s":[],"q":[]}');
+      expect(result.text).toBe('{"t":[],"q":[]}');
     });
   });
 
@@ -202,9 +202,9 @@ describe('AI Provider Module', () => {
       expect(provider.getMaxContextTokens()).toBe(8192);
     });
 
-    it('should return empty summary for empty messages array', async () => {
+    it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result.text).toContain('No messages to summarize');
+      expect(result.text).toBe('{"t":[],"q":[]}');
     });
 
     it('should include provider type in error', async () => {
