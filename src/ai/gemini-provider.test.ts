@@ -1,16 +1,16 @@
 /**
- * Unit Tests for OpenAI Provider
- * 
- * Tests the OpenAI provider implementation including API calls,
+ * Unit Tests for Gemini Provider
+ *
+ * Tests the Gemini provider implementation including API calls,
  * error handling, and response parsing.
- * 
- * @module ai/openai-provider.test
- * 
- * **Validates: Requirements 5.2** - OpenAI API support
+ *
+ * @module ai/gemini-provider.test
+ *
+ * **Validates: Requirements 5.2** - Gemini API support
  * **Validates: Requirements 5.4** - Graceful error handling
  */
 
-import { OpenAIProvider } from './openai-provider';
+import { GeminiProvider } from './gemini-provider';
 import { AIProviderError } from './ai-provider';
 import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 
@@ -18,65 +18,79 @@ import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 const mockFetch = jest.fn();
 global.fetch = mockFetch as any;
 
-describe('OpenAIProvider', () => {
-  const originalEnv = process.env.OPENAI_API_KEY;
+describe('GeminiProvider', () => {
+  const originalApiKey = process.env.GEMINI_API_KEY;
+  const originalLlmModel = process.env.LLM_MODEL;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.OPENAI_API_KEY = 'test-api-key';
+    process.env.GEMINI_API_KEY = 'test-gemini-key';
+    delete process.env.LLM_MODEL;
   });
 
   afterEach(() => {
-    if (originalEnv !== undefined) {
-      process.env.OPENAI_API_KEY = originalEnv;
+    if (originalApiKey !== undefined) {
+      process.env.GEMINI_API_KEY = originalApiKey;
     } else {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.GEMINI_API_KEY;
+    }
+    if (originalLlmModel !== undefined) {
+      process.env.LLM_MODEL = originalLlmModel;
+    } else {
+      delete process.env.LLM_MODEL;
     }
   });
 
   describe('constructor', () => {
     it('should create provider with API key from environment', () => {
-      process.env.OPENAI_API_KEY = 'env-api-key';
-      const provider = new OpenAIProvider();
-      expect(provider).toBeInstanceOf(OpenAIProvider);
+      process.env.GEMINI_API_KEY = 'env-api-key';
+      const provider = new GeminiProvider();
+      expect(provider).toBeInstanceOf(GeminiProvider);
     });
 
     it('should create provider with explicit API key', () => {
-      delete process.env.OPENAI_API_KEY;
-      const provider = new OpenAIProvider('explicit-api-key');
-      expect(provider).toBeInstanceOf(OpenAIProvider);
+      delete process.env.GEMINI_API_KEY;
+      const provider = new GeminiProvider('explicit-api-key');
+      expect(provider).toBeInstanceOf(GeminiProvider);
     });
 
     it('should throw AIProviderError when API key is not configured', () => {
-      delete process.env.OPENAI_API_KEY;
-      expect(() => new OpenAIProvider()).toThrow(AIProviderError);
-      expect(() => new OpenAIProvider()).toThrow('OpenAI API key is not configured');
+      delete process.env.GEMINI_API_KEY;
+      expect(() => new GeminiProvider()).toThrow(AIProviderError);
+      expect(() => new GeminiProvider()).toThrow('Gemini API key is not configured');
     });
 
     it('should throw AIProviderError with correct provider type', () => {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.GEMINI_API_KEY;
       try {
-        new OpenAIProvider();
+        new GeminiProvider();
         fail('Expected error to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(AIProviderError);
-        expect((error as AIProviderError).provider).toBe('openai');
+        expect((error as AIProviderError).provider).toBe('gemini');
       }
+    });
+
+    it('should use LLM_MODEL env var when set', () => {
+      process.env.LLM_MODEL = 'gemini-1.5-pro';
+      const provider = new GeminiProvider('test-key');
+      // We can verify the model is used by checking the API call
+      expect(provider).toBeInstanceOf(GeminiProvider);
     });
   });
 
   describe('getMaxContextTokens', () => {
-    it('should return 4096 tokens for GPT-3.5-turbo', () => {
-      const provider = new OpenAIProvider('test-key');
-      expect(provider.getMaxContextTokens()).toBe(4096);
+    it('should return 8192 tokens', () => {
+      const provider = new GeminiProvider('test-key');
+      expect(provider.getMaxContextTokens()).toBe(8192);
     });
   });
 
   describe('summarize', () => {
-    let provider: OpenAIProvider;
+    let provider: GeminiProvider;
 
     beforeEach(() => {
-      provider = new OpenAIProvider('test-api-key');
+      provider = new GeminiProvider('test-gemini-key');
     });
 
     it('should return empty summary message for empty messages array', async () => {
@@ -86,17 +100,12 @@ describe('OpenAIProvider', () => {
 
     it('should make API request with correct parameters', async () => {
       const mockResponse = {
-        id: 'chatcmpl-123',
-        object: 'chat.completion',
-        created: 1677652288,
-        model: 'gpt-3.5-turbo',
-        choices: [{
-          index: 0,
-          message: {
-            role: 'assistant',
-            content: '🧵 **Summary**\nTest summary content',
+        candidates: [{
+          content: {
+            parts: [{ text: '🧵 **Summary**\nTest summary content' }],
+            role: 'model',
           },
-          finish_reason: 'stop',
+          finishReason: 'STOP',
         }],
       };
 
@@ -109,29 +118,56 @@ describe('OpenAIProvider', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const [url, options] = mockFetch.mock.calls[0];
-      expect(url).toBe('https://api.openai.com/v1/chat/completions');
+      expect(url).toContain('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent');
+      expect(url).toContain('key=test-gemini-key');
       expect(options?.method).toBe('POST');
       expect(options?.headers).toEqual({
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer test-api-key',
       });
 
       const body = JSON.parse(options?.body as string);
-      expect(body.model).toBe('gpt-3.5-turbo');
-      expect(body.messages).toHaveLength(2);
-      expect(body.messages[0].role).toBe('system');
-      expect(body.messages[0].content).toBe(SUMMARY_SYSTEM_PROMPT);
-      expect(body.messages[1].role).toBe('user');
-      expect(body.messages[1].content).toContain('User1: Hello');
-      expect(body.messages[1].content).toContain('User2: Hi there');
-      expect(body.response_format).toEqual({ type: 'json_object' });
+      expect(body.contents).toHaveLength(1);
+      expect(body.contents[0].role).toBe('user');
+      expect(body.contents[0].parts[0].text).toContain('User1: Hello');
+      expect(body.contents[0].parts[0].text).toContain('User2: Hi there');
+      expect(body.systemInstruction).toBeDefined();
+      expect(body.systemInstruction.parts[0].text).toBe(SUMMARY_SYSTEM_PROMPT);
+      expect(body.generationConfig.responseMimeType).toBe('application/json');
+    });
+
+    it('should use LLM_MODEL env var in API URL', async () => {
+      process.env.LLM_MODEL = 'gemini-1.5-pro';
+      const customProvider = new GeminiProvider('test-key');
+
+      const mockResponse = {
+        candidates: [{
+          content: {
+            parts: [{ text: 'Summary' }],
+            role: 'model',
+          },
+          finishReason: 'STOP',
+        }],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      await customProvider.summarize(['Test message']);
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toContain('gemini-1.5-pro:generateContent');
     });
 
     it('should use default max_tokens and temperature', async () => {
       const mockResponse = {
-        choices: [{
-          message: { content: 'Summary' },
-          finish_reason: 'stop',
+        candidates: [{
+          content: {
+            parts: [{ text: 'Summary' }],
+            role: 'model',
+          },
+          finishReason: 'STOP',
         }],
       };
 
@@ -143,15 +179,18 @@ describe('OpenAIProvider', () => {
       await provider.summarize(['Test message']);
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
-      expect(body.max_tokens).toBe(500);
-      expect(body.temperature).toBe(0.3);
+      expect(body.generationConfig.maxOutputTokens).toBe(500);
+      expect(body.generationConfig.temperature).toBe(0.3);
     });
 
     it('should use custom max_tokens and temperature from options', async () => {
       const mockResponse = {
-        choices: [{
-          message: { content: 'Summary' },
-          finish_reason: 'stop',
+        candidates: [{
+          content: {
+            parts: [{ text: 'Summary' }],
+            role: 'model',
+          },
+          finishReason: 'STOP',
         }],
       };
 
@@ -163,16 +202,19 @@ describe('OpenAIProvider', () => {
       await provider.summarize(['Test message'], { maxTokens: 1000, temperature: 0.7 });
 
       const body = JSON.parse(mockFetch.mock.calls[0][1]?.body as string);
-      expect(body.max_tokens).toBe(1000);
-      expect(body.temperature).toBe(0.7);
+      expect(body.generationConfig.maxOutputTokens).toBe(1000);
+      expect(body.generationConfig.temperature).toBe(0.7);
     });
 
     it('should return summary content from API response', async () => {
       const expectedSummary = '🧵 **Summary**\nThis is a test summary with topics.';
       const mockResponse = {
-        choices: [{
-          message: { content: expectedSummary },
-          finish_reason: 'stop',
+        candidates: [{
+          content: {
+            parts: [{ text: expectedSummary }],
+            role: 'model',
+          },
+          finishReason: 'STOP',
         }],
       };
 
@@ -187,9 +229,12 @@ describe('OpenAIProvider', () => {
 
     it('should trim whitespace from response', async () => {
       const mockResponse = {
-        choices: [{
-          message: { content: '  Summary with whitespace  \n' },
-          finish_reason: 'stop',
+        candidates: [{
+          content: {
+            parts: [{ text: '  Summary with whitespace  \n' }],
+            role: 'model',
+          },
+          finishReason: 'STOP',
         }],
       };
 
@@ -208,20 +253,42 @@ describe('OpenAIProvider', () => {
           ok: false,
           status: 401,
           json: async () => ({
-            error: { message: 'Invalid API key', type: 'invalid_request_error' },
+            error: { code: 401, message: 'API key not valid', status: 'UNAUTHENTICATED' },
           }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: false,
           status: 401,
           json: async () => ({
-            error: { message: 'Invalid API key', type: 'invalid_request_error' },
+            error: { code: 401, message: 'API key not valid', status: 'UNAUTHENTICATED' },
           }),
         } as Response);
-        
+
+        await expect(provider.summarize(['Test'])).rejects.toThrow('Authentication failed');
+      });
+
+      it('should throw AIProviderError on 403 forbidden', async () => {
+        mockFetch.mockResolvedValue({
+          ok: false,
+          status: 403,
+          json: async () => ({
+            error: { code: 403, message: 'Permission denied', status: 'PERMISSION_DENIED' },
+          }),
+        } as Response);
+
+        await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
+
+        mockFetch.mockResolvedValue({
+          ok: false,
+          status: 403,
+          json: async () => ({
+            error: { code: 403, message: 'Permission denied', status: 'PERMISSION_DENIED' },
+          }),
+        } as Response);
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('Authentication failed');
       });
 
@@ -230,20 +297,20 @@ describe('OpenAIProvider', () => {
           ok: false,
           status: 429,
           json: async () => ({
-            error: { message: 'Rate limit exceeded', type: 'rate_limit_error' },
+            error: { code: 429, message: 'Resource exhausted', status: 'RESOURCE_EXHAUSTED' },
           }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: false,
           status: 429,
           json: async () => ({
-            error: { message: 'Rate limit exceeded', type: 'rate_limit_error' },
+            error: { code: 429, message: 'Resource exhausted', status: 'RESOURCE_EXHAUSTED' },
           }),
         } as Response);
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('Too many requests');
       });
 
@@ -252,20 +319,20 @@ describe('OpenAIProvider', () => {
           ok: false,
           status: 500,
           json: async () => ({
-            error: { message: 'Internal server error', type: 'server_error' },
+            error: { code: 500, message: 'Internal error', status: 'INTERNAL' },
           }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: false,
           status: 500,
           json: async () => ({
-            error: { message: 'Internal server error', type: 'server_error' },
+            error: { code: 500, message: 'Internal error', status: 'INTERNAL' },
           }),
         } as Response);
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('temporarily unavailable');
       });
 
@@ -274,20 +341,20 @@ describe('OpenAIProvider', () => {
           ok: false,
           status: 503,
           json: async () => ({
-            error: { message: 'Service unavailable', type: 'server_error' },
+            error: { code: 503, message: 'Service unavailable', status: 'UNAVAILABLE' },
           }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: false,
           status: 503,
           json: async () => ({
-            error: { message: 'Service unavailable', type: 'server_error' },
+            error: { code: 503, message: 'Service unavailable', status: 'UNAVAILABLE' },
           }),
         } as Response);
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('temporarily unavailable');
       });
 
@@ -297,27 +364,27 @@ describe('OpenAIProvider', () => {
           status: 400,
           json: async () => ({
             error: {
-              message: 'Context length exceeded',
-              type: 'invalid_request_error',
-              code: 'context_length_exceeded',
+              code: 400,
+              message: 'Request payload size exceeds the token limit',
+              status: 'INVALID_ARGUMENT',
             },
           }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: false,
           status: 400,
           json: async () => ({
             error: {
-              message: 'Context length exceeded',
-              type: 'invalid_request_error',
-              code: 'context_length_exceeded',
+              code: 400,
+              message: 'Request payload size exceeds the token limit',
+              status: 'INVALID_ARGUMENT',
             },
           }),
         } as Response);
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('too long to summarize');
       });
 
@@ -326,20 +393,20 @@ describe('OpenAIProvider', () => {
           ok: false,
           status: 400,
           json: async () => ({
-            error: { message: 'Bad request', type: 'invalid_request_error' },
+            error: { code: 400, message: 'Bad request', status: 'INVALID_ARGUMENT' },
           }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: false,
           status: 400,
           json: async () => ({
-            error: { message: 'Bad request', type: 'invalid_request_error' },
+            error: { code: 400, message: 'Bad request', status: 'INVALID_ARGUMENT' },
           }),
         } as Response);
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('Unable to process');
       });
 
@@ -347,25 +414,25 @@ describe('OpenAIProvider', () => {
         mockFetch.mockRejectedValue(new Error('fetch failed: network error'));
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockRejectedValue(new Error('fetch failed: network error'));
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('Unable to connect');
       });
 
-      it('should throw AIProviderError on empty choices array', async () => {
+      it('should throw AIProviderError on empty candidates array', async () => {
         mockFetch.mockResolvedValue({
           ok: true,
-          json: async () => ({ choices: [] }),
+          json: async () => ({ candidates: [] }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: true,
-          json: async () => ({ choices: [] }),
+          json: async () => ({ candidates: [] }),
         } as Response);
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('Unable to generate summary');
       });
 
@@ -373,19 +440,19 @@ describe('OpenAIProvider', () => {
         mockFetch.mockResolvedValue({
           ok: true,
           json: async () => ({
-            choices: [{ message: { content: null } }],
+            candidates: [{ content: { parts: [{ text: null }], role: 'model' } }],
           }),
         } as Response);
 
         await expect(provider.summarize(['Test'])).rejects.toThrow(AIProviderError);
-        
+
         mockFetch.mockResolvedValue({
           ok: true,
           json: async () => ({
-            choices: [{ message: { content: null } }],
+            candidates: [{ content: { parts: [{ text: null }], role: 'model' } }],
           }),
         } as Response);
-        
+
         await expect(provider.summarize(['Test'])).rejects.toThrow('Unable to generate summary');
       });
 
@@ -394,7 +461,7 @@ describe('OpenAIProvider', () => {
           ok: false,
           status: 401,
           json: async () => ({
-            error: { message: 'Invalid API key: sk-test123...', type: 'invalid_request_error' },
+            error: { code: 401, message: 'API key not valid: AIza...', status: 'UNAUTHENTICATED' },
           }),
         } as Response);
 
@@ -404,32 +471,8 @@ describe('OpenAIProvider', () => {
         } catch (error) {
           expect(error).toBeInstanceOf(AIProviderError);
           const errorMessage = (error as AIProviderError).message;
-          expect(errorMessage).not.toContain('sk-');
-          expect(errorMessage).not.toContain('test-api-key');
-        }
-      });
-
-      it('should not expose stack traces in error messages', async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 500,
-          json: async () => ({
-            error: {
-              message: 'Error at line 123 in file.js\n  at function()',
-              type: 'server_error',
-            },
-          }),
-        } as Response);
-
-        try {
-          await provider.summarize(['Test']);
-          fail('Expected error to be thrown');
-        } catch (error) {
-          expect(error).toBeInstanceOf(AIProviderError);
-          const errorMessage = (error as AIProviderError).message;
-          expect(errorMessage).not.toContain('line 123');
-          expect(errorMessage).not.toContain('file.js');
-          expect(errorMessage).not.toContain('at function');
+          expect(errorMessage).not.toContain('AIza');
+          expect(errorMessage).not.toContain('test-gemini-key');
         }
       });
 
@@ -438,7 +481,7 @@ describe('OpenAIProvider', () => {
           ok: false,
           status: 500,
           json: async () => ({
-            error: { message: 'Server error', type: 'server_error' },
+            error: { code: 500, message: 'Server error', status: 'INTERNAL' },
           }),
         } as Response);
 
@@ -447,7 +490,7 @@ describe('OpenAIProvider', () => {
           fail('Expected error to be thrown');
         } catch (error) {
           expect(error).toBeInstanceOf(AIProviderError);
-          expect((error as AIProviderError).provider).toBe('openai');
+          expect((error as AIProviderError).provider).toBe('gemini');
         }
       });
     });
@@ -455,32 +498,30 @@ describe('OpenAIProvider', () => {
 
   describe('estimateTokens', () => {
     it('should estimate tokens based on character count', () => {
-      // 1 token ≈ 4 characters
-      expect(OpenAIProvider.estimateTokens('')).toBe(0);
-      expect(OpenAIProvider.estimateTokens('test')).toBe(1);
-      expect(OpenAIProvider.estimateTokens('hello world')).toBe(3); // 11 chars / 4 = 2.75 → 3
-      expect(OpenAIProvider.estimateTokens('a'.repeat(100))).toBe(25);
+      expect(GeminiProvider.estimateTokens('')).toBe(0);
+      expect(GeminiProvider.estimateTokens('test')).toBe(1);
+      expect(GeminiProvider.estimateTokens('hello world')).toBe(3);
+      expect(GeminiProvider.estimateTokens('a'.repeat(100))).toBe(25);
     });
 
     it('should round up token estimates', () => {
-      // 5 characters should round up to 2 tokens
-      expect(OpenAIProvider.estimateTokens('hello')).toBe(2);
+      expect(GeminiProvider.estimateTokens('hello')).toBe(2);
     });
   });
 
   describe('AIProvider interface compliance', () => {
     it('should implement summarize method', () => {
-      const provider = new OpenAIProvider('test-key');
+      const provider = new GeminiProvider('test-key');
       expect(typeof provider.summarize).toBe('function');
     });
 
     it('should implement getMaxContextTokens method', () => {
-      const provider = new OpenAIProvider('test-key');
+      const provider = new GeminiProvider('test-key');
       expect(typeof provider.getMaxContextTokens).toBe('function');
     });
 
     it('should return positive max context tokens', () => {
-      const provider = new OpenAIProvider('test-key');
+      const provider = new GeminiProvider('test-key');
       expect(provider.getMaxContextTokens()).toBeGreaterThan(0);
     });
   });

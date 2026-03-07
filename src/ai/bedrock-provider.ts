@@ -16,6 +16,7 @@ import {
   InvokeModelCommandInput,
 } from '@aws-sdk/client-bedrock-runtime';
 import { AIProvider, AIProviderError, SummarizeOptions } from './ai-provider';
+import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 
 // ============================================================================
 // Types and Interfaces
@@ -75,48 +76,6 @@ const DEFAULT_MAX_TOKENS = 500;
 const DEFAULT_TEMPERATURE = 0.3;
 
 // ============================================================================
-// Summarization Prompt
-// ============================================================================
-
-/**
- * System prompt for chat summarization
- * 
- * This prompt instructs the AI to generate structured summaries with:
- * - Topic headers
- * - Bullet points for key information
- * - Open questions section
- * - Strict length limit for Telegram compatibility
- */
-const SYSTEM_PROMPT = `You are a chat summarization assistant.
-
-**CRITICAL RULES:**
-1. **Language**: Write in the SAME language as the chat messages (Ukrainian, Russian, English, etc.)
-2. **Length**: Keep total output under 3500 characters (Telegram limit is 4096)
-3. **Format**: Use *asterisks* for bold ONLY around important words/phrases, NOT section headers
-4. **Attribution**: Name who said/proposed things
-
-**Output Structure:**
-🧵 Summary [in message language]
-[1-2 sentence overview]
-
-• Topic 1 – Key points (who said what)
-• Topic 2 – Key points (who said what)
-
-❓ Open Questions [in message language]
-• Question 1
-• Question 2
-
-**Guidelines:**
-- Be concise - prioritize key decisions and action items
-- Group related messages into 3-5 main topics maximum
-- Use bold (*text*) sparingly for emphasis on key terms only
-- Do NOT bold section headers or labels
-- Omit small talk and off-topic content
-- If no open questions, omit that section
-- For forwarded messages, attribute to original author`;
-
-
-// ============================================================================
 // Bedrock Provider Implementation
 // ============================================================================
 
@@ -144,7 +103,7 @@ export class BedrockProvider implements AIProvider {
    */
   constructor(
     region?: string,
-    modelId: string = MODEL_ID,
+    modelId: string = process.env.LLM_MODEL ?? MODEL_ID,
     client?: BedrockRuntimeClient
   ) {
     const awsRegion = region ?? process.env.AWS_REGION ?? 'us-east-1';
@@ -184,7 +143,7 @@ export class BedrockProvider implements AIProvider {
       anthropic_version: ANTHROPIC_VERSION,
       max_tokens: maxTokens,
       temperature: temperature,
-      system: SYSTEM_PROMPT,
+      system: SUMMARY_SYSTEM_PROMPT,
       messages: [
         { role: 'user', content: userPrompt },
       ],

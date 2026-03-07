@@ -1,12 +1,12 @@
 /**
- * OpenAI Provider Implementation
- * 
- * This module implements the AIProvider interface using OpenAI's GPT-3.5-turbo model.
+ * Google Gemini Provider Implementation
+ *
+ * This module implements the AIProvider interface using Google's Gemini API.
  * It provides cost-efficient summarization with configurable parameters.
- * 
- * @module ai/openai-provider
- * 
- * **Validates: Requirements 5.2** - When LLM_PROVIDER is "openai", use OpenAI API
+ *
+ * @module ai/gemini-provider
+ *
+ * **Validates: Requirements 5.2** - When LLM_PROVIDER is "gemini", use Gemini API
  * **Validates: Requirements 5.4** - If AI_Provider fails, respond with user-friendly error message
  */
 
@@ -18,56 +18,49 @@ import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 // ============================================================================
 
 /**
- * OpenAI Chat Completion API request message format
+ * Gemini generateContent API request body
  */
-interface ChatMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-/**
- * OpenAI Chat Completion API request body
- */
-interface ChatCompletionRequest {
-  model: string;
-  messages: ChatMessage[];
-  max_tokens: number;
-  temperature: number;
-  response_format?: { type: string };
-}
-
-/**
- * OpenAI Chat Completion API response format
- */
-interface ChatCompletionResponse {
-  id: string;
-  object: string;
-  created: number;
-  model: string;
-  choices: Array<{
-    index: number;
-    message: {
-      role: string;
-      content: string;
-    };
-    finish_reason: string;
+interface GeminiRequest {
+  contents: Array<{
+    role: 'user' | 'model';
+    parts: Array<{ text: string }>;
   }>;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+  systemInstruction?: {
+    parts: Array<{ text: string }>;
+  };
+  generationConfig: {
+    maxOutputTokens: number;
+    temperature: number;
+    responseMimeType?: string;
   };
 }
 
 /**
- * OpenAI API error response format
+ * Gemini generateContent API response format
  */
-interface OpenAIErrorResponse {
+interface GeminiResponse {
+  candidates?: Array<{
+    content: {
+      parts: Array<{ text: string }>;
+      role: string;
+    };
+    finishReason: string;
+  }>;
+  usageMetadata?: {
+    promptTokenCount: number;
+    candidatesTokenCount: number;
+    totalTokenCount: number;
+  };
+}
+
+/**
+ * Gemini API error response format
+ */
+interface GeminiErrorResponse {
   error: {
+    code: number;
     message: string;
-    type: string;
-    param?: string;
-    code?: string;
+    status: string;
   };
 }
 
@@ -75,14 +68,14 @@ interface OpenAIErrorResponse {
 // Constants
 // ============================================================================
 
-/** OpenAI API endpoint for chat completions */
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+/** Gemini API base URL */
+const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-/** Model to use for summarization - GPT-3.5-turbo for cost efficiency */
-const MODEL = 'gpt-3.5-turbo';
+/** Default model for Gemini provider */
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 
-/** Maximum context tokens for GPT-3.5-turbo (4K context window) */
-const MAX_CONTEXT_TOKENS = 4096;
+/** Maximum context tokens (conservative limit) */
+const MAX_CONTEXT_TOKENS = 8192;
 
 /** Default max tokens for response generation */
 const DEFAULT_MAX_TOKENS = 500;
@@ -94,61 +87,51 @@ const DEFAULT_TEMPERATURE = 0.3;
 const REQUEST_TIMEOUT_MS = 30000;
 
 // ============================================================================
-// OpenAI Provider Implementation
+// Gemini Provider Implementation
 // ============================================================================
 
 /**
- * OpenAI Provider Implementation
- * 
- * Uses GPT-3.5-turbo for cost-efficient summarization (~$0.002/1K tokens).
+ * Google Gemini Provider Implementation
+ *
+ * Uses Gemini 2.0 Flash for cost-efficient summarization.
  * Implements the AIProvider interface for seamless integration with the
  * summary engine.
- * 
- * **Validates: Requirements 5.2** - OpenAI API support
+ *
+ * **Validates: Requirements 5.2** - Gemini API support
  * **Validates: Requirements 5.4** - Graceful error handling
  */
-export class OpenAIProvider implements AIProvider {
+export class GeminiProvider implements AIProvider {
   private readonly apiKey: string;
-  private readonly apiUrl: string;
   private readonly model: string;
   private readonly maxContextTokens: number;
 
   /**
-   * Create a new OpenAI provider instance
-   * 
-   * @param apiKey - OpenAI API key (defaults to OPENAI_API_KEY env var)
-   * @param apiUrl - OpenAI API URL (defaults to standard endpoint)
-   * @param model - Model to use (defaults to gpt-3.5-turbo)
+   * Create a new Gemini provider instance
+   *
+   * @param apiKey - Gemini API key (defaults to GEMINI_API_KEY env var)
+   * @param model - Model to use (defaults to LLM_MODEL env var, then gemini-2.0-flash)
    * @throws AIProviderError if API key is not configured
    */
-  constructor(
-    apiKey?: string,
-    apiUrl: string = OPENAI_API_URL,
-    model: string = process.env.LLM_MODEL ?? MODEL
-  ) {
-    this.apiKey = apiKey ?? process.env.OPENAI_API_KEY ?? '';
-    this.apiUrl = apiUrl;
-    this.model = model;
+  constructor(apiKey?: string, model?: string) {
+    this.apiKey = apiKey ?? process.env.GEMINI_API_KEY ?? '';
+    this.model = model ?? process.env.LLM_MODEL ?? DEFAULT_MODEL;
     this.maxContextTokens = MAX_CONTEXT_TOKENS;
 
     if (!this.apiKey) {
       throw new AIProviderError(
-        'OpenAI API key is not configured. Please set the OPENAI_API_KEY environment variable.',
-        'openai'
+        'Gemini API key is not configured. Please set the GEMINI_API_KEY environment variable.',
+        'gemini'
       );
     }
   }
 
   /**
-   * Generate a summary of the provided messages using OpenAI's API
-   * 
+   * Generate a summary of the provided messages using Gemini's API
+   *
    * @param messages - Array of message strings to summarize
    * @param options - Optional configuration for the summarization
    * @returns Promise resolving to the generated summary text
    * @throws AIProviderError if the API call fails
-   * 
-   * **Validates: Requirements 5.2** - Use OpenAI API for summarization
-   * **Validates: Requirements 5.4** - Handle API errors gracefully
    */
   async summarize(messages: string[], options?: SummarizeOptions): Promise<string> {
     if (messages.length === 0) {
@@ -158,33 +141,36 @@ export class OpenAIProvider implements AIProvider {
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
     const temperature = options?.temperature ?? DEFAULT_TEMPERATURE;
 
-    // Format messages for the prompt
     const formattedMessages = messages.join('\n');
     const userPrompt = `Please summarize the following chat conversation:\n\n${formattedMessages}`;
 
-    const requestBody: ChatCompletionRequest = {
-      model: this.model,
-      messages: [
-        { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
+    const requestBody: GeminiRequest = {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: userPrompt }],
+        },
       ],
-      max_tokens: maxTokens,
-      temperature: temperature,
-      response_format: { type: 'json_object' },
+      systemInstruction: {
+        parts: [{ text: SUMMARY_SYSTEM_PROMPT }],
+      },
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature: temperature,
+        responseMimeType: 'application/json',
+      },
     };
 
     try {
       const response = await this.makeApiRequest(requestBody);
       return this.extractSummaryFromResponse(response);
     } catch (error) {
-      // Re-throw AIProviderError as-is
       if (error instanceof AIProviderError) {
         throw error;
       }
-      // Wrap other errors
       throw new AIProviderError(
         'Failed to generate summary. Please try again later.',
-        'openai',
+        'gemini',
         error instanceof Error ? error : new Error(String(error))
       );
     }
@@ -192,30 +178,30 @@ export class OpenAIProvider implements AIProvider {
 
   /**
    * Get the maximum number of context tokens supported by this provider
-   * 
-   * @returns 4096 tokens (GPT-3.5-turbo context window)
+   *
+   * @returns 8192 tokens (conservative limit)
    */
   getMaxContextTokens(): number {
     return this.maxContextTokens;
   }
 
   /**
-   * Make an API request to OpenAI
-   * 
+   * Make an API request to Gemini
+   *
    * @param requestBody - The request body to send
    * @returns Promise resolving to the API response
    * @throws AIProviderError if the request fails
    */
-  private async makeApiRequest(requestBody: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+  private async makeApiRequest(requestBody: GeminiRequest): Promise<GeminiResponse> {
+    const url = `${GEMINI_API_BASE_URL}/${this.model}:generateContent?key=${this.apiKey}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(this.apiUrl, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(requestBody),
         signal: controller.signal,
@@ -227,46 +213,42 @@ export class OpenAIProvider implements AIProvider {
         await this.handleErrorResponse(response);
       }
 
-      const data = await response.json() as ChatCompletionResponse;
+      const data = await response.json() as GeminiResponse;
       return data;
     } catch (error) {
       clearTimeout(timeoutId);
 
-      // Handle abort/timeout
       if (error instanceof Error && error.name === 'AbortError') {
         throw new AIProviderError(
           'Request timed out. Please try again.',
-          'openai',
+          'gemini',
           error
         );
       }
 
-      // Handle network errors
       if (error instanceof Error && error.message.includes('fetch')) {
         throw new AIProviderError(
-          'Unable to connect to OpenAI. Please check your internet connection.',
-          'openai',
+          'Unable to connect to Gemini. Please check your internet connection.',
+          'gemini',
           error
         );
       }
 
-      // Re-throw AIProviderError as-is
       if (error instanceof AIProviderError) {
         throw error;
       }
 
-      // Wrap other errors
       throw new AIProviderError(
         'An unexpected error occurred while generating the summary.',
-        'openai',
+        'gemini',
         error instanceof Error ? error : new Error(String(error))
       );
     }
   }
 
   /**
-   * Handle error responses from the OpenAI API
-   * 
+   * Handle error responses from the Gemini API
+   *
    * @param response - The fetch response object
    * @throws AIProviderError with appropriate user-friendly message
    */
@@ -274,12 +256,19 @@ export class OpenAIProvider implements AIProvider {
     let errorMessage = 'Unable to generate summary. Please try again later.';
 
     try {
-      const errorData = await response.json() as OpenAIErrorResponse;
-      
-      // Map specific error types to user-friendly messages
-      // Never expose API keys, internal codes, or technical details
+      const errorData = await response.json() as GeminiErrorResponse;
+
       switch (response.status) {
+        case 400:
+          if (errorData.error?.message?.toLowerCase().includes('token') ||
+              errorData.error?.message?.toLowerCase().includes('length')) {
+            errorMessage = 'The conversation is too long to summarize at once. Please try a shorter time range.';
+          } else {
+            errorMessage = 'Unable to process the request. Please try again.';
+          }
+          break;
         case 401:
+        case 403:
           errorMessage = 'Authentication failed. Please contact the administrator.';
           break;
         case 429:
@@ -288,57 +277,45 @@ export class OpenAIProvider implements AIProvider {
         case 500:
         case 502:
         case 503:
-          errorMessage = 'OpenAI service is temporarily unavailable. Please try again later.';
-          break;
-        case 400:
-          // Handle specific 400 errors without exposing details
-          if (errorData.error?.code === 'context_length_exceeded') {
-            errorMessage = 'The conversation is too long to summarize at once. Please try a shorter time range.';
-          } else {
-            errorMessage = 'Unable to process the request. Please try again.';
-          }
+          errorMessage = 'Gemini service is temporarily unavailable. Please try again later.';
           break;
         default:
           errorMessage = 'Unable to generate summary. Please try again later.';
       }
 
-      // Log the actual error for debugging (but don't expose to user)
-      console.error('OpenAI API error:', {
+      console.error('Gemini API error:', {
         status: response.status,
-        type: errorData.error?.type,
-        code: errorData.error?.code,
-        // Don't log the full message as it might contain sensitive info
+        errorStatus: errorData.error?.status,
       });
     } catch {
-      // If we can't parse the error response, use the generic message
-      console.error('OpenAI API error: Unable to parse error response', {
+      console.error('Gemini API error: Unable to parse error response', {
         status: response.status,
       });
     }
 
-    throw new AIProviderError(errorMessage, 'openai');
+    throw new AIProviderError(errorMessage, 'gemini');
   }
 
   /**
    * Extract the summary text from the API response
-   * 
+   *
    * @param response - The API response
    * @returns The summary text
    * @throws AIProviderError if the response is invalid
    */
-  private extractSummaryFromResponse(response: ChatCompletionResponse): string {
-    if (!response.choices || response.choices.length === 0) {
+  private extractSummaryFromResponse(response: GeminiResponse): string {
+    if (!response.candidates || response.candidates.length === 0) {
       throw new AIProviderError(
         'Unable to generate summary. Please try again.',
-        'openai'
+        'gemini'
       );
     }
 
-    const content = response.choices[0]?.message?.content;
+    const content = response.candidates[0]?.content?.parts?.[0]?.text;
     if (!content) {
       throw new AIProviderError(
         'Unable to generate summary. Please try again.',
-        'openai'
+        'gemini'
       );
     }
 
@@ -347,26 +324,21 @@ export class OpenAIProvider implements AIProvider {
 
   /**
    * Estimate the number of tokens in a text string
-   * 
-   * This is a rough estimation using the rule of thumb that
-   * 1 token ≈ 4 characters for English text.
-   * 
+   *
    * @param text - The text to estimate tokens for
    * @returns Estimated token count
    */
   static estimateTokens(text: string): number {
-    // Rough estimation: 1 token ≈ 4 characters for English text
-    // This is a conservative estimate to avoid exceeding limits
     return Math.ceil(text.length / 4);
   }
 }
 
 /**
- * Create an OpenAI provider instance with default configuration
- * 
- * @returns A new OpenAIProvider instance
+ * Create a Gemini provider instance with default configuration
+ *
+ * @returns A new GeminiProvider instance
  * @throws AIProviderError if API key is not configured
  */
-export function createOpenAIProvider(): OpenAIProvider {
-  return new OpenAIProvider();
+export function createGeminiProvider(): GeminiProvider {
+  return new GeminiProvider();
 }

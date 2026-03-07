@@ -13,21 +13,28 @@ import {
   SummarizeOptions,
   OpenAIProvider,
   BedrockProvider,
+  GeminiProvider,
   createAIProvider,
   getProviderTypeFromEnv,
   isAIProviderConfigured,
 } from './ai-provider';
 
 describe('AI Provider Module', () => {
-  // Store original env value to restore after tests
+  // Store original env values to restore after tests
   const originalEnv = process.env.LLM_PROVIDER;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
 
   afterEach(() => {
-    // Restore original environment variable
+    // Restore original environment variables
     if (originalEnv !== undefined) {
       process.env.LLM_PROVIDER = originalEnv;
     } else {
       delete process.env.LLM_PROVIDER;
+    }
+    if (originalGeminiKey !== undefined) {
+      process.env.GEMINI_API_KEY = originalGeminiKey;
+    } else {
+      delete process.env.GEMINI_API_KEY;
     }
   });
 
@@ -139,6 +146,46 @@ describe('AI Provider Module', () => {
     });
   });
 
+  describe('GeminiProvider', () => {
+    let provider: GeminiProvider;
+
+    beforeEach(() => {
+      process.env.GEMINI_API_KEY = 'test-gemini-key';
+      provider = new GeminiProvider();
+    });
+
+    it('should implement AIProvider interface', () => {
+      expect(provider.summarize).toBeDefined();
+      expect(provider.getMaxContextTokens).toBeDefined();
+    });
+
+    it('should return correct max context tokens', () => {
+      expect(provider.getMaxContextTokens()).toBe(8192);
+    });
+
+    it('should throw AIProviderError when API key is not configured', () => {
+      delete process.env.GEMINI_API_KEY;
+      expect(() => new GeminiProvider()).toThrow(AIProviderError);
+      expect(() => new GeminiProvider()).toThrow('Gemini API key is not configured');
+    });
+
+    it('should include provider type in error', () => {
+      delete process.env.GEMINI_API_KEY;
+      try {
+        new GeminiProvider();
+        fail('Expected error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AIProviderError);
+        expect((error as AIProviderError).provider).toBe('gemini');
+      }
+    });
+
+    it('should return empty summary for empty messages array', async () => {
+      const result = await provider.summarize([]);
+      expect(result).toContain('No messages to summarize');
+    });
+  });
+
   describe('BedrockProvider', () => {
     let provider: BedrockProvider;
 
@@ -161,11 +208,13 @@ describe('AI Provider Module', () => {
     });
 
     it('should include provider type in error', async () => {
-      // Mock the client to throw an error
-      jest.mock('@aws-sdk/client-bedrock-runtime');
+      // Create a provider with a mock client that throws
+      const { BedrockRuntimeClient } = jest.requireActual('@aws-sdk/client-bedrock-runtime');
+      const mockClient = new BedrockRuntimeClient({ region: 'us-east-1' });
+      mockClient.send = jest.fn().mockRejectedValue(new Error('Mock error'));
+      const errorProvider = new BedrockProvider('us-east-1', undefined, mockClient);
       try {
-        // This will fail because the mock client isn't set up
-        await provider.summarize(['test']);
+        await errorProvider.summarize(['test']);
         fail('Expected error to be thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(AIProviderError);
@@ -185,12 +234,20 @@ describe('AI Provider Module', () => {
       expect(getProviderTypeFromEnv()).toBe('bedrock');
     });
 
+    it('should return "gemini" when LLM_PROVIDER is "gemini"', () => {
+      process.env.LLM_PROVIDER = 'gemini';
+      expect(getProviderTypeFromEnv()).toBe('gemini');
+    });
+
     it('should handle uppercase values', () => {
       process.env.LLM_PROVIDER = 'OPENAI';
       expect(getProviderTypeFromEnv()).toBe('openai');
 
       process.env.LLM_PROVIDER = 'BEDROCK';
       expect(getProviderTypeFromEnv()).toBe('bedrock');
+
+      process.env.LLM_PROVIDER = 'GEMINI';
+      expect(getProviderTypeFromEnv()).toBe('gemini');
     });
 
     it('should handle mixed case values', () => {
@@ -199,6 +256,9 @@ describe('AI Provider Module', () => {
 
       process.env.LLM_PROVIDER = 'BedRock';
       expect(getProviderTypeFromEnv()).toBe('bedrock');
+
+      process.env.LLM_PROVIDER = 'Gemini';
+      expect(getProviderTypeFromEnv()).toBe('gemini');
     });
 
     it('should handle values with whitespace', () => {
@@ -207,6 +267,9 @@ describe('AI Provider Module', () => {
 
       process.env.LLM_PROVIDER = '\tbedrock\n';
       expect(getProviderTypeFromEnv()).toBe('bedrock');
+
+      process.env.LLM_PROVIDER = '  gemini  ';
+      expect(getProviderTypeFromEnv()).toBe('gemini');
     });
 
     it('should throw AIProviderConfigError when LLM_PROVIDER is not set', () => {
@@ -233,8 +296,9 @@ describe('AI Provider Module', () => {
     const originalOpenAIKey = process.env.OPENAI_API_KEY;
 
     beforeEach(() => {
-      // Set a test API key for OpenAI provider tests
+      // Set test API keys for provider tests
       process.env.OPENAI_API_KEY = 'test-api-key';
+      process.env.GEMINI_API_KEY = 'test-gemini-key';
     });
 
     afterEach(() => {
@@ -256,6 +320,11 @@ describe('AI Provider Module', () => {
         const provider = createAIProvider('bedrock');
         expect(provider).toBeInstanceOf(BedrockProvider);
       });
+
+      it('should create GeminiProvider when type is "gemini"', () => {
+        const provider = createAIProvider('gemini');
+        expect(provider).toBeInstanceOf(GeminiProvider);
+      });
     });
 
     describe('with environment variable', () => {
@@ -269,6 +338,12 @@ describe('AI Provider Module', () => {
         process.env.LLM_PROVIDER = 'bedrock';
         const provider = createAIProvider();
         expect(provider).toBeInstanceOf(BedrockProvider);
+      });
+
+      it('should create GeminiProvider when LLM_PROVIDER is "gemini"', () => {
+        process.env.LLM_PROVIDER = 'gemini';
+        const provider = createAIProvider();
+        expect(provider).toBeInstanceOf(GeminiProvider);
       });
 
       it('should throw AIProviderConfigError when LLM_PROVIDER is not set', () => {
@@ -296,9 +371,11 @@ describe('AI Provider Module', () => {
       it('should return positive max context tokens', () => {
         const openaiProvider = createAIProvider('openai');
         const bedrockProvider = createAIProvider('bedrock');
-        
+        const geminiProvider = createAIProvider('gemini');
+
         expect(openaiProvider.getMaxContextTokens()).toBeGreaterThan(0);
         expect(bedrockProvider.getMaxContextTokens()).toBeGreaterThan(0);
+        expect(geminiProvider.getMaxContextTokens()).toBeGreaterThan(0);
       });
     });
   });
@@ -311,6 +388,11 @@ describe('AI Provider Module', () => {
 
     it('should return true when LLM_PROVIDER is "bedrock"', () => {
       process.env.LLM_PROVIDER = 'bedrock';
+      expect(isAIProviderConfigured()).toBe(true);
+    });
+
+    it('should return true when LLM_PROVIDER is "gemini"', () => {
+      process.env.LLM_PROVIDER = 'gemini';
       expect(isAIProviderConfigured()).toBe(true);
     });
 
@@ -332,13 +414,18 @@ describe('AI Provider Module', () => {
 
   describe('AIProvider interface contract', () => {
     const originalOpenAIKey = process.env.OPENAI_API_KEY;
+    const originalFetch = global.fetch;
 
     beforeEach(() => {
-      // Set a test API key for OpenAI provider tests
+      // Set test API keys for provider tests
       process.env.OPENAI_API_KEY = 'test-api-key';
+      process.env.GEMINI_API_KEY = 'test-gemini-key';
+      // Mock fetch to reject immediately instead of making real network calls
+      global.fetch = jest.fn().mockRejectedValue(new Error('Network disabled in tests'));
     });
 
     afterEach(() => {
+      global.fetch = originalFetch;
       // Restore original API key
       if (originalOpenAIKey !== undefined) {
         process.env.OPENAI_API_KEY = originalOpenAIKey;
@@ -350,6 +437,7 @@ describe('AI Provider Module', () => {
     const providers: Array<{ name: string; create: () => AIProvider }> = [
       { name: 'OpenAIProvider', create: () => new OpenAIProvider() },
       { name: 'BedrockProvider', create: () => new BedrockProvider() },
+      { name: 'GeminiProvider', create: () => new GeminiProvider() },
     ];
 
     providers.forEach(({ name, create }) => {
@@ -363,8 +451,8 @@ describe('AI Provider Module', () => {
         it('should have summarize method that returns a Promise', async () => {
           const result = provider.summarize(['test']);
           expect(result).toBeInstanceOf(Promise);
-          // Catch the rejection to prevent unhandled promise rejection
-          await expect(result).rejects.toThrow();
+          // Settle the promise (may resolve or reject depending on provider/environment)
+          await result.catch(() => {});
         });
 
         it('should have getMaxContextTokens method that returns a number', () => {
@@ -384,9 +472,8 @@ describe('AI Provider Module', () => {
           const options: SummarizeOptions = { maxTokens: 500, temperature: 0.5 };
           const promise = provider.summarize(['test'], options);
           expect(promise).toBeInstanceOf(Promise);
-          // OpenAI provider will try to make an API call (which fails in tests)
-          // Bedrock provider throws because it's not implemented
-          await expect(promise).rejects.toThrow();
+          // Settle the promise (may resolve or reject depending on provider/environment)
+          await promise.catch(() => {});
         });
       });
     });

@@ -12,6 +12,7 @@
 
 import { BedrockProvider } from './bedrock-provider';
 import { AIProviderError } from './ai-provider';
+import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 
 // Mock the AWS SDK
@@ -141,7 +142,7 @@ describe('BedrockProvider', () => {
       expect(body.messages[0].role).toBe('user');
       expect(body.messages[0].content).toContain('User1: Hello');
       expect(body.messages[0].content).toContain('User2: Hi there');
-      expect(body.system).toBeDefined();
+      expect(body.system).toBe(SUMMARY_SYSTEM_PROMPT);
     });
 
     it('should use default max_tokens and temperature', async () => {

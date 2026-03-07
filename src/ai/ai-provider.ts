@@ -71,7 +71,7 @@ export interface AIProvider {
 /**
  * Supported AI provider types
  */
-export type AIProviderType = 'openai' | 'bedrock';
+export type AIProviderType = 'openai' | 'bedrock' | 'gemini';
 
 // ============================================================================
 // Error Classes
@@ -135,6 +135,9 @@ export { OpenAIProvider } from './openai-provider';
 // Export BedrockProvider from its dedicated module
 export { BedrockProvider } from './bedrock-provider';
 
+// Export GeminiProvider from its dedicated module
+export { GeminiProvider } from './gemini-provider';
+
 // ============================================================================
 // Factory Function
 // ============================================================================
@@ -179,10 +182,15 @@ export function createAIProvider(providerType?: AIProviderType): AIProvider {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { BedrockProvider: BedrockProviderClass } = require('./bedrock-provider');
       return new BedrockProviderClass();
+    case 'gemini':
+      // Use require to avoid circular dependency at module load time
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { GeminiProvider: GeminiProviderClass } = require('./gemini-provider');
+      return new GeminiProviderClass();
     default:
       // This should never happen due to TypeScript, but handle it for runtime safety
       throw new AIProviderConfigError(
-        `Invalid AI provider type: ${type}. Supported types are 'openai' and 'bedrock'.`
+        `Invalid AI provider type: ${type}. Supported types are 'openai', 'bedrock', and 'gemini'.`
       );
   }
 }
@@ -199,16 +207,16 @@ export function getProviderTypeFromEnv(): AIProviderType {
   if (!envValue) {
     throw new AIProviderConfigError(
       'LLM_PROVIDER environment variable is not set. ' +
-      'Please set it to "openai" or "bedrock".'
+      'Please set it to "openai", "bedrock", or "gemini".'
     );
   }
   
   const normalizedValue = envValue.toLowerCase().trim();
   
-  if (normalizedValue !== 'openai' && normalizedValue !== 'bedrock') {
+  if (normalizedValue !== 'openai' && normalizedValue !== 'bedrock' && normalizedValue !== 'gemini') {
     throw new AIProviderConfigError(
       `Invalid LLM_PROVIDER value: "${envValue}". ` +
-      'Supported values are "openai" and "bedrock".'
+      'Supported values are "openai", "bedrock", and "gemini".'
     );
   }
   
