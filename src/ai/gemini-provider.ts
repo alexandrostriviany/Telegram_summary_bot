@@ -77,7 +77,7 @@ const DEFAULT_MODEL = 'gemini-2.5-flash';
 const MAX_CONTEXT_TOKENS = 8192;
 
 /** Default max tokens for response generation */
-const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_MAX_TOKENS = 2048;
 
 /** Default temperature for focused summarization */
 const DEFAULT_TEMPERATURE = 0.3;
@@ -335,6 +335,12 @@ export class GeminiProvider implements AIProvider {
         'Unable to generate summary. Please try again.',
         'gemini'
       );
+    }
+
+    // Warn if the response was truncated by the token limit
+    const finishReason = response.candidates[0]?.finishReason;
+    if (finishReason === 'MAX_TOKENS') {
+      console.warn('Gemini response was truncated by maxOutputTokens limit');
     }
 
     // Gemini 2.5 models include thinking parts (thought: true) before the actual response.
