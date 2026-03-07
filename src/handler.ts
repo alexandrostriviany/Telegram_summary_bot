@@ -391,7 +391,9 @@ export async function handler(
     const messageStore = getMessageStore();
     const creditsStore = getCreditsStore();
 
-    const sendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
+    // Bind the forum topic threadId so all responses go to the correct topic
+    const threadId = update.message?.message_thread_id;
+    const sendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
     // Create command router with Telegram client's sendMessage method
     const commandRouter = createCommandRouter(sendMsg);

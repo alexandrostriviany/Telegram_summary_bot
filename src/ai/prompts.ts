@@ -20,7 +20,7 @@ Example:
 {"s":["@alice proposed the Q1 deadline for March","@bob raised budget concerns about the new project","Team agreed to schedule a review meeting"],"q":["Should we postpone the launch?"]}
 
 Rules:
-1. Write in the dominant language of the chat messages
+1. Write in the dominant language of the chat messages. If messages are in Russian, translate the summary to Ukrainian
 2. Be concise — prioritize decisions, action items, and key points
 3. Prefix usernames with @ (e.g. "@john proposed...")
 4. Attribute forwarded messages to the original author

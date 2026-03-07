@@ -26,11 +26,12 @@ const TRUNCATION_SUFFIX = '\n\n... (message truncated)';
 export interface TelegramClient {
   /**
    * Send a message to a Telegram chat
-   * 
+   *
    * @param chatId - The chat ID to send the message to
    * @param text - The message text (supports HTML)
+   * @param threadId - Optional forum topic thread ID to reply in the correct topic
    */
-  sendMessage(chatId: number, text: string): Promise<void>;
+  sendMessage(chatId: number, text: string, threadId?: number): Promise<void>;
 }
 
 /**
@@ -120,9 +121,9 @@ export class TelegramBotClient implements TelegramClient {
    * **Validates: Requirements 3.4** - Format summaries with topic headers, bullet points
    * **Validates: Requirements 3.5** - Handle no messages found case
    */
-  async sendMessage(chatId: number, text: string): Promise<void> {
+  async sendMessage(chatId: number, text: string, threadId?: number): Promise<void> {
     const url = `${this.apiBaseUrl}${this.botToken}/sendMessage`;
-    
+
     // Truncate message if it exceeds Telegram's limit
     let messageText = text;
     if (text.length > MAX_MESSAGE_LENGTH) {
@@ -130,13 +131,18 @@ export class TelegramBotClient implements TelegramClient {
       messageText = text.substring(0, maxLength) + TRUNCATION_SUFFIX;
       console.warn(`Message truncated from ${text.length} to ${messageText.length} characters`);
     }
-    
+
     // Use HTML mode instead of Markdown for more robust formatting
-    const bodyWithHtml = {
+    const bodyWithHtml: Record<string, unknown> = {
       chat_id: chatId,
       text: messageText,
       parse_mode: 'HTML',
     };
+
+    // Send to the correct forum topic when threadId is provided
+    if (threadId !== undefined) {
+      bodyWithHtml.message_thread_id = threadId;
+    }
 
     let lastError: Error | undefined;
 
