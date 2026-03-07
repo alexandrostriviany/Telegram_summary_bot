@@ -1,0 +1,1031 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CloudWatch Monitoring for Telegram Summary Bot
+
+  Deploys 4 dashboards and critical alarms for the serverless Telegram bot.
+  Can be added to the main template.yaml or deployed as a separate stack
+  using cross-stack references.
+
+# ---------------------------------------------------------------------------
+# Parameters – wire these to your main stack outputs or hardcode after deploy
+# ---------------------------------------------------------------------------
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Description: Name of the webhook handler Lambda function
+    # Example: telegram-summary-bot-webhook-handler
+
+  HttpApiId:
+    Type: String
+    Description: ID of the HTTP API Gateway (not the full URL)
+    # Example: a1b2c3d4e5
+
+  DynamoDBTableName:
+    Type: String
+    Description: Name of the DynamoDB messages table
+    # Example: telegram-summary-bot-messages
+
+  UserCreditsTableName:
+    Type: String
+    Description: Name of the DynamoDB user credits table
+    Default: ''
+
+  ChatOwnershipTableName:
+    Type: String
+    Description: Name of the DynamoDB chat ownership table
+    Default: ''
+
+  AdminEmail:
+    Type: String
+    Description: Admin email address for alarm notifications (leave empty to skip)
+    Default: ''
+
+Conditions:
+  HasAdminEmail: !Not [!Equals [!Ref AdminEmail, '']]
+  HasCreditsTable: !Not [!Equals [!Ref UserCreditsTableName, '']]
+  HasOwnershipTable: !Not [!Equals [!Ref ChatOwnershipTableName, '']]
+
+Resources:
+
+  # ==========================================================================
+  # SNS Topic for Alarm Notifications
+  # ==========================================================================
+  AlarmNotificationTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAdminEmail
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-alarm-notifications'
+      DisplayName: Telegram Bot Alarms
+
+  AlarmEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAdminEmail
+    Properties:
+      TopicArn: !Ref AlarmNotificationTopic
+      Protocol: email
+      Endpoint: !Ref AdminEmail
+
+  # ==========================================================================
+  # DASHBOARD 1: System Overview
+  #
+  # High-level health at a glance. Top row = single-value KPIs, followed by
+  # time-series charts for API, Lambda, and DynamoDB.
+  # ==========================================================================
+  SystemOverviewDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-SystemOverview'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 1,
+              "properties": {
+                "markdown": "# Telegram Summary Bot – System Overview"
+              }
+            },
+
+            {
+              "type": "metric",
+              "x": 0, "y": 1, "width": 6, "height": 4,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum"}]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "period": 3600,
+                "title": "API Requests (1h)"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 6, "y": 1, "width": 6, "height": 4,
+              "properties": {
+                "metrics": [
+                  [{"expression": "100*(m5xx/m_count)", "label": "Error Rate %", "id": "error_rate"}],
+                  ["AWS/ApiGateway", "5xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "id": "m5xx", "visible": false}],
+                  ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum", "id": "m_count", "visible": false}]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "period": 3600,
+                "title": "API 5xx Rate % (1h)"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 1, "width": 6, "height": 4,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Latency", "ApiId", "${HttpApiId}", {"stat": "p90"}]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "period": 3600,
+                "title": "API p90 Latency (1h)"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 18, "y": 1, "width": 6, "height": 4,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Errors", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum"}]
+                ],
+                "view": "singleValue",
+                "region": "${AWS::Region}",
+                "period": 3600,
+                "title": "Lambda Errors (1h)",
+                "setPeriodToTimeRange": false
+              }
+            },
+
+            {
+              "type": "metric",
+              "x": 0, "y": 5, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "Total Requests"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "API Gateway – Request Count",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 5, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "4xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "4xx", "color": "#ff9900"}],
+                  ["AWS/ApiGateway", "5xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "5xx", "color": "#d13212"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "API Gateway – Error Responses",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+
+            {
+              "type": "metric",
+              "x": 0, "y": 11, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Invocations", "color": "#2ca02c"}],
+                  ["AWS/Lambda", "Errors",      "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Errors",      "color": "#d13212"}],
+                  ["AWS/Lambda", "Throttles",   "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Throttles",   "color": "#ff9900"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Lambda – Invocations / Errors / Throttles",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 11, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p50",  "label": "p50"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p90",  "label": "p90"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p99",  "label": "p99"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "Maximum", "label": "Max", "color": "#d13212"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Lambda – Duration Distribution (ms)",
+                "yAxis": {"left": {"min": 0, "label": "ms"}}
+              }
+            },
+
+            {
+              "type": "metric",
+              "x": 0, "y": 17, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read RCU"}],
+                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Write WCU"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "DynamoDB – Consumed Capacity",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 17, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ReadThrottleEvents",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read Throttles",  "color": "#ff9900"}],
+                  ["AWS/DynamoDB", "WriteThrottleEvents", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Write Throttles", "color": "#d13212"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "DynamoDB – Throttle Events",
+                "yAxis": {"left": {"min": 0}}
+              }
+            }
+          ]
+        }
+
+  # ==========================================================================
+  # DASHBOARD 2: Application Flow
+  #
+  # Visualises the two main business flows derived from the codebase:
+  #   Flow A  Telegram message → API GW → Lambda → DynamoDB PutItem (store)
+  #   Flow B  /summary cmd → API GW → Lambda → DynamoDB Query → AI → Telegram
+  #
+  # Uses CloudWatch Logs Insights to extract application-level signals from
+  # the structured console.log / console.error output in handler.ts,
+  # summary-handler.ts, openai-provider.ts, bedrock-provider.ts, and
+  # error-handler.ts.
+  # ==========================================================================
+  ApplicationFlowDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-ApplicationFlow'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 2,
+              "properties": {
+                "markdown": "# Telegram Summary Bot – Application Flow\n**Flow A** (message storage): Telegram → API GW → Lambda `storeMessage()` → DynamoDB PutItem\n\n**Flow B** (summarisation): Telegram `/summary` → API GW → Lambda `handleCommand()` → DynamoDB Query → AI Provider (OpenAI / Bedrock) → Telegram `sendMessage`"
+              }
+            },
+
+            {
+              "type": "metric",
+              "x": 0, "y": 2, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "Webhook Requests"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Step 1 – Webhook Requests Received",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8, "y": 2, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "DDB Writes (WCU)"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Step 2 – Messages Stored (DynamoDB Writes)",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "log",
+              "x": 16, "y": 2, "width": 8, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Received command/ | stats count(*) as commands by bin(5m) | sort @timestamp desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Step 3 – Bot Commands Received",
+                "stacked": false
+              }
+            },
+
+            {
+              "type": "log",
+              "x": 0, "y": 8, "width": 8, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Received command:.*\\/summary/ | stats count(*) as summaries by bin(5m) | sort @timestamp desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Summary Requests (/summary)",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 8, "y": 8, "width": 8, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Stored message/ | stats count(*) as stored by bin(5m) | sort @timestamp desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Messages Successfully Stored",
+                "stacked": false
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16, "y": 8, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "DDB Reads (RCU)"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "DynamoDB Reads (Summary Queries)",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+
+            {
+              "type": "log",
+              "x": 0, "y": 14, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /\\[AI_PROVIDER_ERROR\\]/ or @message like /\\[AI_PROVIDER_TIMEOUT\\]/ or @message like /OpenAI API error/ or @message like /Bedrock API error/ | stats count(*) as errors by bin(5m) | sort @timestamp desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "AI Provider Errors",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 14, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Telegram API call failed/ | stats count(*) as failures by bin(5m) | sort @timestamp desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Telegram API Send Failures (Retry Attempts)",
+                "stacked": false
+              }
+            },
+
+            {
+              "type": "log",
+              "x": 0, "y": 20, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /\\[(NO_MESSAGES|AI_PROVIDER_ERROR|AI_PROVIDER_TIMEOUT|DYNAMODB_ERROR|INVALID_COMMAND|TELEGRAM_API_ERROR|CONFIGURATION_ERROR|UNKNOWN_ERROR)\\]/ | parse @message /\\[(?<errorCode>[A-Z_]+)\\]/ | stats count(*) as total by errorCode | sort total desc",
+                "region": "${AWS::Region}",
+                "view": "pie",
+                "title": "Error Distribution by Code",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 20, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Bot added to group/ | stats count(*) as additions by bin(1h) | sort @timestamp desc",
+                "region": "${AWS::Region}",
+                "view": "bar",
+                "title": "Bot Added to Groups (hourly)",
+                "stacked": false
+              }
+            }
+          ]
+        }
+
+  # ==========================================================================
+  # DASHBOARD 3: Infrastructure Health
+  #
+  # Deep-dive into each AWS service. Lambda → DynamoDB → API Gateway.
+  # ==========================================================================
+  InfrastructureHealthDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-Infrastructure'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 1,
+              "properties": { "markdown": "## Lambda – ${LambdaFunctionName}" }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 1, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "Invocations",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8, "y": 1, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Errors",    "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Errors",    "color": "#d13212"}],
+                  ["AWS/Lambda", "Throttles", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Throttles", "color": "#ff9900"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "Errors & Throttles",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16, "y": 1, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "ConcurrentExecutions", "FunctionName", "${LambdaFunctionName}", {"stat": "Maximum"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "Concurrent Executions",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p50",     "label": "p50"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p90",     "label": "p90"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p99",     "label": "p99"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "Maximum", "label": "Max", "color": "#d13212"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "Duration Percentiles (ms)",
+                "yAxis": {"left": {"min": 0, "label": "ms"}},
+                "annotations": {
+                  "horizontal": [
+                    {"label": "Timeout (30s)", "value": 30000, "color": "#d13212"}
+                  ]
+                }
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @type = 'REPORT' | parse @message /Init Duration: (?<initDuration>[0-9.]+) ms/ | filter ispresent(initDuration) | stats count(*) as coldStarts, avg(initDuration) as avgInitMs, max(initDuration) as maxInitMs by bin(5m)",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Cold Starts & Init Duration",
+                "stacked": false
+              }
+            },
+
+            {
+              "type": "text",
+              "x": 0, "y": 13, "width": 24, "height": 1,
+              "properties": { "markdown": "## DynamoDB – ${DynamoDBTableName}" }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 14, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read RCU"}],
+                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Write WCU"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Consumed Capacity Units",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8, "y": 14, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ReadThrottleEvents",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read Throttles",  "color": "#ff9900"}],
+                  ["AWS/DynamoDB", "WriteThrottleEvents", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Write Throttles", "color": "#d13212"}],
+                  ["AWS/DynamoDB", "SystemErrors",        "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "System Errors",   "color": "#9467bd"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Throttles & System Errors",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16, "y": 14, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "UserErrors", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "User Errors"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "DynamoDB User Errors",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 20, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "SuccessfulRequestLatency", "TableName", "${DynamoDBTableName}", "Operation", "PutItem", {"stat": "Average", "label": "PutItem (store)"}],
+                  ["AWS/DynamoDB", "SuccessfulRequestLatency", "TableName", "${DynamoDBTableName}", "Operation", "Query",   {"stat": "Average", "label": "Query (summary)"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "DynamoDB Request Latency by Operation (ms)",
+                "yAxis": {"left": {"min": 0, "label": "ms"}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 20, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ReturnedItemCount", "TableName", "${DynamoDBTableName}", "Operation", "Query", {"stat": "Average", "label": "Avg Items Returned"}],
+                  ["AWS/DynamoDB", "ReturnedItemCount", "TableName", "${DynamoDBTableName}", "Operation", "Query", {"stat": "Maximum", "label": "Max Items Returned"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "DynamoDB Query – Returned Item Count",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+
+            {
+              "type": "text",
+              "x": 0, "y": 26, "width": 24, "height": 1,
+              "properties": { "markdown": "## API Gateway – HTTP API (${HttpApiId})" }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 27, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "Request Count",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 8, "y": 27, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "4xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "4xx", "color": "#ff9900"}],
+                  ["AWS/ApiGateway", "5xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "5xx", "color": "#d13212"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "4xx / 5xx Errors",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 16, "y": 27, "width": 8, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/ApiGateway", "Latency",            "ApiId", "${HttpApiId}", {"stat": "p50", "label": "Latency p50"}],
+                  ["AWS/ApiGateway", "Latency",            "ApiId", "${HttpApiId}", {"stat": "p90", "label": "Latency p90"}],
+                  ["AWS/ApiGateway", "IntegrationLatency", "ApiId", "${HttpApiId}", {"stat": "p90", "label": "Integration p90", "color": "#9467bd"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "Latency Percentiles (ms)",
+                "yAxis": {"left": {"min": 0, "label": "ms"}}
+              }
+            }
+          ]
+        }
+
+  # ==========================================================================
+  # DASHBOARD 4: Error Monitoring
+  #
+  # Focused on failures: Lambda errors, API 5xx, DynamoDB issues, and
+  # application-level error codes extracted from structured logs via
+  # CloudWatch Logs Insights.
+  # ==========================================================================
+  ErrorMonitoringDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${AWS::StackName}-Errors'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 1,
+              "properties": {
+                "markdown": "# Telegram Summary Bot – Error Monitoring"
+              }
+            },
+
+            {
+              "type": "metric",
+              "x": 0, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/Lambda",     "Errors", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Lambda Errors", "color": "#d13212"}],
+                  ["AWS/ApiGateway", "5xx",    "ApiId",        "${HttpApiId}",           {"stat": "Sum", "label": "API 5xx",       "color": "#ff9900"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "Lambda Errors & API 5xx (1-min granularity)",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  [{"expression": "IF(m_inv > 0, 100*(m_err/m_inv), 0)", "label": "Error Rate %", "id": "err_rate", "color": "#d13212"}],
+                  ["AWS/Lambda", "Errors",      "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "id": "m_err", "visible": false}],
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "id": "m_inv", "visible": false}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Lambda Error Rate %",
+                "yAxis": {"left": {"min": 0, "max": 100, "label": "%"}}
+              }
+            },
+
+            {
+              "type": "log",
+              "x": 0, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /\\[(NO_MESSAGES|AI_PROVIDER_ERROR|AI_PROVIDER_TIMEOUT|DYNAMODB_ERROR|INVALID_COMMAND|TELEGRAM_API_ERROR|CONFIGURATION_ERROR|UNKNOWN_ERROR)\\]/ | parse @message /\\[(?<errorCode>[A-Z_]+)\\]/ | stats count(*) as total by errorCode | sort total desc",
+                "region": "${AWS::Region}",
+                "view": "pie",
+                "title": "Application Error Distribution (by ErrorCode)",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /\\[(NO_MESSAGES|AI_PROVIDER_ERROR|AI_PROVIDER_TIMEOUT|DYNAMODB_ERROR|INVALID_COMMAND|TELEGRAM_API_ERROR|CONFIGURATION_ERROR|UNKNOWN_ERROR)\\]/ | parse @message /\\[(?<errorCode>[A-Z_]+)\\]/ | stats count(*) as total by errorCode, bin(5m) as period | sort period desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Application Errors Over Time (by code)",
+                "stacked": true
+              }
+            },
+
+            {
+              "type": "log",
+              "x": 0, "y": 13, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /OpenAI API error/ or @message like /Bedrock API error/ or @message like /\\[AI_PROVIDER_ERROR\\]/ or @message like /\\[AI_PROVIDER_TIMEOUT\\]/ | parse @message /status.*?(?<statusCode>\\d{3})/ | stats count(*) as total by coalesce(statusCode, 'unknown') as status | sort total desc",
+                "region": "${AWS::Region}",
+                "view": "bar",
+                "title": "AI Provider Errors by HTTP Status",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 13, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Telegram API call failed/ | parse @message /attempt (?<attempt>\\d+)\\/(?<maxAttempts>\\d+)/ | stats count(*) as retries by bin(5m) | sort @timestamp desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Telegram API Retry Attempts",
+                "stacked": false
+              }
+            },
+
+            {
+              "type": "metric",
+              "x": 0, "y": 19, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "SystemErrors",       "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "DDB System Errors", "color": "#d13212"}],
+                  ["AWS/DynamoDB", "UserErrors",         "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "DDB User Errors",   "color": "#ff9900"}],
+                  ["AWS/DynamoDB", "ReadThrottleEvents", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read Throttles",    "color": "#9467bd"}],
+                  ["AWS/DynamoDB", "WriteThrottleEvents","TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Write Throttles",   "color": "#e377c2"}]
+                ],
+                "view": "timeSeries",
+                "stacked": false,
+                "region": "${AWS::Region}",
+                "period": 60,
+                "title": "DynamoDB Errors & Throttles",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 19, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /HTML parsing failed/ or @message like /Message truncated/ or @message like /Plain text send also failed/ | parse @message /(?<event>HTML parsing failed|Message truncated|Plain text send also failed)/ | stats count(*) as total by event | sort total desc",
+                "region": "${AWS::Region}",
+                "view": "bar",
+                "title": "Telegram Formatting Issues",
+                "stacked": false
+              }
+            },
+
+            {
+              "type": "log",
+              "x": 0, "y": 25, "width": 24, "height": 8,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /ERROR/ or @message like /Error/ or @message like /\\[AI_PROVIDER/ or @message like /\\[DYNAMODB_ERROR\\]/ or @message like /\\[TELEGRAM_API_ERROR\\]/ or @message like /\\[UNKNOWN_ERROR\\]/ or @message like /\\[CONFIGURATION_ERROR\\]/ | fields @timestamp, @message | sort @timestamp desc | limit 50",
+                "region": "${AWS::Region}",
+                "view": "table",
+                "title": "Recent Error Log Entries (last 50)",
+                "stacked": false
+              }
+            }
+          ]
+        }
+
+  # ==========================================================================
+  # CLOUDWATCH ALARMS
+  #
+  # Critical alarms for operational awareness.  If AdminEmail is provided,
+  # an SNS topic + email subscription is created and alarms publish to it.
+  # Otherwise alarms only change state in the CloudWatch console.
+  # ==========================================================================
+
+  # --- Lambda Errors: fires when > 5 errors in a 5-min window ---------------
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-LambdaErrors-High'
+      AlarmDescription: >
+        Lambda function is producing more than 5 errors in a 5-minute window.
+        Check CloudWatch Logs for error details.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- Lambda Throttles: any throttle is worth investigating -----------------
+  LambdaThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-LambdaThrottles'
+      AlarmDescription: >
+        Lambda function is being throttled. This means Telegram webhook
+        requests are being dropped. Check concurrency limits.
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- Lambda Duration: approaching 30s timeout -----------------------------
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-LambdaDuration-High'
+      AlarmDescription: >
+        Lambda p99 duration exceeds 25 seconds (timeout is 30s). Summary
+        generation with hierarchical chunking or slow AI provider responses
+        are likely causes.
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref LambdaFunctionName
+      ExtendedStatistic: p99
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 25000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- API Gateway 5xx: server-side errors -----------------------------------
+  ApiGateway5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-ApiGateway-5xx'
+      AlarmDescription: >
+        API Gateway is returning 5xx errors. The Lambda handler returns 200
+        even on application errors to prevent Telegram retries, so a 5xx
+        indicates an infrastructure problem (Lambda crash, timeout, or
+        API Gateway misconfiguration).
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref HttpApiId
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- DynamoDB Throttles: read or write throttles ---------------------------
+  DynamoDBThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-DynamoDB-Throttles'
+      AlarmDescription: >
+        DynamoDB is throttling requests. With PAY_PER_REQUEST billing this
+        indicates a traffic spike that exceeds the table's adaptive capacity.
+        Message storage and summary queries will be impacted.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref DynamoDBTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- DynamoDB System Errors: server-side failures --------------------------
+  DynamoDBSystemErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-DynamoDB-SystemErrors'
+      AlarmDescription: >
+        DynamoDB is returning system errors (500). These are AWS-side issues.
+        Message storage and summary retrieval are impacted.
+      Namespace: AWS/DynamoDB
+      MetricName: SystemErrors
+      Dimensions:
+        - Name: TableName
+          Value: !Ref DynamoDBTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- User Credits Table: throttle alarm -----------------------------------
+  CreditsTableThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasCreditsTable
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-CreditsTable-Throttles'
+      AlarmDescription: >
+        User credits DynamoDB table is being throttled. Credit checks and
+        consumption operations are impacted.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref UserCreditsTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- Chat Ownership Table: throttle alarm ---------------------------------
+  OwnershipTableThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasOwnershipTable
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-OwnershipTable-Throttles'
+      AlarmDescription: >
+        Chat ownership DynamoDB table is being throttled. Bot-added-to-group
+        ownership recording is impacted.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref ChatOwnershipTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+Outputs:
+  SystemOverviewDashboardUrl:
+    Description: URL for the System Overview dashboard
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}-SystemOverview'
+
+  ApplicationFlowDashboardUrl:
+    Description: URL for the Application Flow dashboard
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}-ApplicationFlow'
+
+  InfrastructureDashboardUrl:
+    Description: URL for the Infrastructure Health dashboard
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}-Infrastructure'
+
+  ErrorMonitoringDashboardUrl:
+    Description: URL for the Error Monitoring dashboard
+    Value: !Sub 'https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}-Errors'
+
+  AlarmNotificationTopicArn:
+    Condition: HasAdminEmail
+    Description: SNS topic ARN used for alarm email notifications (confirm the subscription email to activate)
+    Value: !Ref AlarmNotificationTopic

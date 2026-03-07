@@ -31,7 +31,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Install dependencies
         run: npm ci
@@ -52,21 +52,41 @@ jobs:
               TelegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
               OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
               LLMProvider=${{ vars.LLM_PROVIDER || 'gemini' }} \
-              GeminiApiKey=${{ secrets.GEMINI_API_KEY }}
+              LLMModel=${{ vars.LLM_MODEL || '' }} \
+              GeminiApiKey=${{ secrets.GEMINI_API_KEY }} \
+              AdminUserId=${{ secrets.ADMIN_USER_ID || '0' }}
 
-      - name: Get webhook URL from stack outputs
-        id: get-url
+      - name: Get stack outputs
+        id: get-outputs
         run: |
           STACK_NAME=$(grep -m1 'stack_name' samconfig.toml 2>/dev/null | tr -d ' "' | cut -d= -f2 || echo "telegram-summary-bot")
-          WEBHOOK_URL=$(aws cloudformation describe-stacks \
+          echo "stack_name=$STACK_NAME" >> "$GITHUB_OUTPUT"
+
+          OUTPUTS=$(aws cloudformation describe-stacks \
             --stack-name "$STACK_NAME" \
-            --query 'Stacks[0].Outputs[?OutputKey==`WebhookUrl`].OutputValue' \
-            --output text)
+            --query 'Stacks[0].Outputs' \
+            --output json)
+
+          WEBHOOK_URL=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="WebhookUrl") | .OutputValue')
+          FUNCTION_NAME=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="FunctionName") | .OutputValue')
+          API_ENDPOINT=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="ApiEndpoint") | .OutputValue')
+          MESSAGES_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="MessagesTableName") | .OutputValue')
+          CREDITS_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="UserCreditsTableName") | .OutputValue')
+          OWNERSHIP_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="ChatOwnershipTableName") | .OutputValue')
+
+          # Extract HttpApiId from the API endpoint URL
+          HTTP_API_ID=$(echo "$API_ENDPOINT" | sed 's|https://||' | cut -d. -f1)
+
           echo "webhook_url=$WEBHOOK_URL" >> "$GITHUB_OUTPUT"
+          echo "function_name=$FUNCTION_NAME" >> "$GITHUB_OUTPUT"
+          echo "http_api_id=$HTTP_API_ID" >> "$GITHUB_OUTPUT"
+          echo "messages_table=$MESSAGES_TABLE" >> "$GITHUB_OUTPUT"
+          echo "credits_table=$CREDITS_TABLE" >> "$GITHUB_OUTPUT"
+          echo "ownership_table=$OWNERSHIP_TABLE" >> "$GITHUB_OUTPUT"
 
       - name: Register Telegram webhook
         run: |
-          RESPONSE=$(curl -sf "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setWebhook?url=${{ steps.get-url.outputs.webhook_url }}")
+          RESPONSE=$(curl -sf "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setWebhook?url=${{ steps.get-outputs.outputs.webhook_url }}")
           echo "$RESPONSE"
           echo "$RESPONSE" | grep -q '"ok":true' || exit 1
 
@@ -74,4 +94,18 @@ jobs:
         run: |
           RESPONSE=$(curl -sf "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/getWebhookInfo")
           echo "$RESPONSE"
-          echo "$RESPONSE" | grep -q '"url":"${{ steps.get-url.outputs.webhook_url }}"' || echo "Warning: webhook URL mismatch"
+          echo "$RESPONSE" | grep -q '"url":"${{ steps.get-outputs.outputs.webhook_url }}"' || echo "Warning: webhook URL mismatch"
+
+      - name: Deploy monitoring stack
+        run: |
+          aws cloudformation deploy \
+            --template-file monitoring/cloudwatch-monitoring.yaml \
+            --stack-name "${{ steps.get-outputs.outputs.stack_name }}-monitoring" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              LambdaFunctionName=${{ steps.get-outputs.outputs.function_name }} \
+              HttpApiId=${{ steps.get-outputs.outputs.http_api_id }} \
+              DynamoDBTableName=${{ steps.get-outputs.outputs.messages_table }} \
+              UserCreditsTableName=${{ steps.get-outputs.outputs.credits_table }} \
+              ChatOwnershipTableName=${{ steps.get-outputs.outputs.ownership_table }} \
+              AdminEmail=${{ secrets.ADMIN_EMAIL || '' }}
