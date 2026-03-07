@@ -15,7 +15,7 @@ import {
   InvokeModelCommand,
   InvokeModelCommandInput,
 } from '@aws-sdk/client-bedrock-runtime';
-import { AIProvider, AIProviderError, SummarizeOptions } from './ai-provider';
+import { AIProvider, AIProviderError, SummarizeOptions, SummarizeResult, TokenUsage } from './ai-provider';
 import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 
 // ============================================================================
@@ -127,9 +127,9 @@ export class BedrockProvider implements AIProvider {
    * **Validates: Requirements 5.3** - Use AWS Bedrock with Claude for summarization
    * **Validates: Requirements 5.4** - Handle API errors gracefully
    */
-  async summarize(messages: string[], options?: SummarizeOptions): Promise<string> {
+  async summarize(messages: string[], options?: SummarizeOptions): Promise<SummarizeResult> {
     if (messages.length === 0) {
-      return '🧵 **Summary**\nNo messages to summarize.';
+      return { text: '🧵 **Summary**\nNo messages to summarize.' };
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
@@ -151,7 +151,9 @@ export class BedrockProvider implements AIProvider {
 
     try {
       const response = await this.invokeModel(requestBody);
-      return this.extractSummaryFromResponse(response);
+      const text = this.extractSummaryFromResponse(response);
+      const usage = this.extractUsageFromResponse(response);
+      return { text, usage };
     } catch (error) {
       // Re-throw AIProviderError as-is
       if (error instanceof AIProviderError) {
@@ -319,6 +321,23 @@ export class BedrockProvider implements AIProvider {
     }
 
     return textContent.text.trim();
+  }
+
+  /**
+   * Extract token usage from the API response
+   *
+   * @param response - The API response
+   * @returns TokenUsage if available, undefined otherwise
+   */
+  private extractUsageFromResponse(response: ClaudeResponseBody): TokenUsage | undefined {
+    if (!response.usage) {
+      return undefined;
+    }
+    return {
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+    };
   }
 
   /**

@@ -81,7 +81,7 @@ describe('OpenAIProvider', () => {
 
     it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result).toBe('{"s":[],"q":[]}');
+      expect(result.text).toBe('{"s":[],"q":[]}');
     });
 
     it('should make API request with correct parameters', async () => {
@@ -183,7 +183,7 @@ describe('OpenAIProvider', () => {
       } as Response);
 
       const result = await provider.summarize(['Test message']);
-      expect(result).toBe(expectedSummary);
+      expect(result.text).toBe(expectedSummary);
     });
 
     it('should trim whitespace from response', async () => {
@@ -200,7 +200,50 @@ describe('OpenAIProvider', () => {
       } as Response);
 
       const result = await provider.summarize(['Test message']);
-      expect(result).toBe('Summary with whitespace');
+      expect(result.text).toBe('Summary with whitespace');
+    });
+
+    it('should return token usage when present in response', async () => {
+      const mockResponse = {
+        choices: [{
+          message: { content: 'Summary' },
+          finish_reason: 'stop',
+        }],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      const result = await provider.summarize(['Test message']);
+      expect(result.usage).toEqual({
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+      });
+    });
+
+    it('should return undefined usage when not present in response', async () => {
+      const mockResponse = {
+        choices: [{
+          message: { content: 'Summary' },
+          finish_reason: 'stop',
+        }],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      const result = await provider.summarize(['Test message']);
+      expect(result.usage).toBeUndefined();
     });
 
     describe('error handling', () => {

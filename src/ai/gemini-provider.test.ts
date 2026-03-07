@@ -95,7 +95,7 @@ describe('GeminiProvider', () => {
 
     it('should return empty JSON for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result).toBe('{"s":[],"q":[]}');
+      expect(result.text).toBe('{"s":[],"q":[]}');
     });
 
     it('should make API request with correct parameters', async () => {
@@ -226,7 +226,7 @@ describe('GeminiProvider', () => {
       } as Response);
 
       const result = await provider.summarize(['Test message']);
-      expect(result).toBe(expectedSummary);
+      expect(result.text).toBe(expectedSummary);
     });
 
     it('should trim whitespace from response', async () => {
@@ -246,7 +246,56 @@ describe('GeminiProvider', () => {
       } as Response);
 
       const result = await provider.summarize(['Test message']);
-      expect(result).toBe('Summary with whitespace');
+      expect(result.text).toBe('Summary with whitespace');
+    });
+
+    it('should return token usage when present in response', async () => {
+      const mockResponse = {
+        candidates: [{
+          content: {
+            parts: [{ text: 'Summary' }],
+            role: 'model',
+          },
+          finishReason: 'STOP',
+        }],
+        usageMetadata: {
+          promptTokenCount: 200,
+          candidatesTokenCount: 80,
+          totalTokenCount: 280,
+        },
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      const result = await provider.summarize(['Test message']);
+      expect(result.usage).toEqual({
+        inputTokens: 200,
+        outputTokens: 80,
+        totalTokens: 280,
+      });
+    });
+
+    it('should return undefined usage when not present in response', async () => {
+      const mockResponse = {
+        candidates: [{
+          content: {
+            parts: [{ text: 'Summary' }],
+            role: 'model',
+          },
+          finishReason: 'STOP',
+        }],
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response);
+
+      const result = await provider.summarize(['Test message']);
+      expect(result.usage).toBeUndefined();
     });
 
     describe('error handling', () => {
@@ -337,7 +386,7 @@ describe('GeminiProvider', () => {
           .mockResolvedValueOnce(successResponse);
 
         const result = await provider.summarize(['Test']);
-        expect(result).toBe('Summary after retry');
+        expect(result.text).toBe('Summary after retry');
         expect(mockFetch).toHaveBeenCalledTimes(2);
       });
 
@@ -461,7 +510,7 @@ describe('GeminiProvider', () => {
         } as Response);
 
         const result = await provider.summarize(['Test message']);
-        expect(result).toBe('{"overview":"Test","topics":[],"questions":[]}');
+        expect(result.text).toBe('{"overview":"Test","topics":[],"questions":[]}');
       });
 
       it('should throw AIProviderError on empty candidates array', async () => {

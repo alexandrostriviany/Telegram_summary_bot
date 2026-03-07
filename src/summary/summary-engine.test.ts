@@ -17,7 +17,7 @@ import {
 } from './summary-engine';
 import { StoredMessage, MessageRange, MessageQuery } from '../types';
 import { MessageStore } from '../store/message-store';
-import { AIProvider } from '../ai/ai-provider';
+import { AIProvider, SummarizeResult } from '../ai/ai-provider';
 
 // ============================================================================
 // Mock Implementations
@@ -39,7 +39,7 @@ function createMockMessageStore(messages: StoredMessage[] = []): MessageStore {
  */
 function createMockAIProvider(summary: string = 'Test summary'): AIProvider {
   return {
-    summarize: jest.fn().mockResolvedValue(summary),
+    summarize: jest.fn().mockResolvedValue({ text: summary } as SummarizeResult),
     getMaxContextTokens: jest.fn().mockReturnValue(4096),
   };
 }
@@ -457,22 +457,22 @@ describe('DefaultSummaryEngine', () => {
       const mockProvider = createMockAIProvider();
       // Set a low token limit to force chunking (500 tokens = ~2000 chars)
       (mockProvider.getMaxContextTokens as jest.Mock).mockReturnValue(500);
-      
+
       // Mock different responses for chunk summaries and final summary
       (mockProvider.summarize as jest.Mock)
-        .mockResolvedValueOnce('Chunk 1 summary')
-        .mockResolvedValueOnce('Chunk 2 summary')
-        .mockResolvedValueOnce('Final combined summary');
-      
+        .mockResolvedValueOnce({ text: 'Chunk 1 summary' })
+        .mockResolvedValueOnce({ text: 'Chunk 2 summary' })
+        .mockResolvedValueOnce({ text: 'Final combined summary' });
+
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
-      
+
       // Create messages that will exceed the token limit
       // Each message is ~100 chars = ~25 tokens
       // With 500 token limit - 1000 buffer = -500 (will use minimum)
       // Let's use a more reasonable setup
       (mockProvider.getMaxContextTokens as jest.Mock).mockReturnValue(1500);
-      
-      const messages = Array.from({ length: 20 }, (_, i) => 
+
+      const messages = Array.from({ length: 20 }, (_, i) =>
         `[12:${i.toString().padStart(2, '0')}] user${i}: ${'A'.repeat(100)}`
       );
 
@@ -487,16 +487,16 @@ describe('DefaultSummaryEngine', () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider();
       (mockProvider.getMaxContextTokens as jest.Mock).mockReturnValue(1200);
-      
+
       (mockProvider.summarize as jest.Mock)
-        .mockResolvedValueOnce('Summary of part 1')
-        .mockResolvedValueOnce('Summary of part 2')
-        .mockResolvedValueOnce('Combined summary');
-      
+        .mockResolvedValueOnce({ text: 'Summary of part 1' })
+        .mockResolvedValueOnce({ text: 'Summary of part 2' })
+        .mockResolvedValueOnce({ text: 'Combined summary' });
+
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
-      
+
       // Create messages that will be split into 2 chunks
-      const messages = Array.from({ length: 15 }, (_, i) => 
+      const messages = Array.from({ length: 15 }, (_, i) =>
         `[12:${i.toString().padStart(2, '0')}] user${i}: ${'B'.repeat(80)}`
       );
 
@@ -504,10 +504,10 @@ describe('DefaultSummaryEngine', () => {
 
       // Verify chunk summaries include part numbers
       const calls = (mockProvider.summarize as jest.Mock).mock.calls;
-      
+
       // First chunk should have context prefix
       expect(calls[0][0][0]).toContain('[Part 1 of');
-      
+
       // Second chunk should have context prefix
       expect(calls[1][0][0]).toContain('[Part 2 of');
     });
@@ -516,15 +516,15 @@ describe('DefaultSummaryEngine', () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider();
       (mockProvider.getMaxContextTokens as jest.Mock).mockReturnValue(1200);
-      
+
       (mockProvider.summarize as jest.Mock)
-        .mockResolvedValueOnce('First part topics')
-        .mockResolvedValueOnce('Second part topics')
-        .mockResolvedValueOnce('Final hierarchical summary');
-      
+        .mockResolvedValueOnce({ text: 'First part topics' })
+        .mockResolvedValueOnce({ text: 'Second part topics' })
+        .mockResolvedValueOnce({ text: 'Final hierarchical summary' });
+
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
-      
-      const messages = Array.from({ length: 15 }, (_, i) => 
+
+      const messages = Array.from({ length: 15 }, (_, i) =>
         `[12:${i.toString().padStart(2, '0')}] user${i}: ${'C'.repeat(80)}`
       );
 
@@ -662,16 +662,16 @@ describe('DefaultSummaryEngine', () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider();
       (mockProvider.summarize as jest.Mock)
-        .mockResolvedValueOnce('Summary A')
-        .mockResolvedValueOnce('Summary B');
-      
+        .mockResolvedValueOnce({ text: 'Summary A' })
+        .mockResolvedValueOnce({ text: 'Summary B' });
+
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
       const chunks = [
         ['Message 1'],
         ['Message 2'],
       ];
 
-      const summaries = await engine.summarizeChunks(chunks);
+      const { summaries } = await engine.summarizeChunks(chunks);
 
       expect(summaries).toHaveLength(2);
       expect(summaries[0]).toBe('Summary A');
@@ -683,7 +683,7 @@ describe('DefaultSummaryEngine', () => {
     it('should create combination prompt with all chunk summaries', async () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider('Combined result');
-      
+
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
       const chunkSummaries = [
         'Part 1: Topics about coding',
@@ -702,13 +702,13 @@ describe('DefaultSummaryEngine', () => {
     it('should return the combined summary from AI provider', async () => {
       const mockStore = createMockMessageStore();
       const mockProvider = createMockAIProvider('Final unified summary');
-      
+
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
       const chunkSummaries = ['Part 1: Summary'];
 
       const result = await engine.combineChunkSummaries(chunkSummaries);
 
-      expect(result).toBe('Final unified summary');
+      expect(result.text).toBe('Final unified summary');
     });
   });
 
@@ -723,16 +723,12 @@ describe('DefaultSummaryEngine', () => {
       );
 
       const mockStore = createMockMessageStore(longMessages);
+      const mockSummarize = jest.fn().mockResolvedValue({ text: 'Final hierarchical summary' });
       const mockProvider: AIProvider = {
-        summarize: jest.fn()
-          .mockResolvedValueOnce('Chunk 1 summary')
-          .mockResolvedValueOnce('Chunk 2 summary')
-          .mockResolvedValueOnce('Chunk 3 summary')
-          .mockResolvedValueOnce('Chunk 4 summary')
-          .mockResolvedValueOnce('Final hierarchical summary'),
+        summarize: mockSummarize,
         getMaxContextTokens: jest.fn().mockReturnValue(1500),
       };
-      
+
       const engine = new DefaultSummaryEngine(mockStore, mockProvider);
 
       const range: MessageRange = { type: 'count', value: 50 };

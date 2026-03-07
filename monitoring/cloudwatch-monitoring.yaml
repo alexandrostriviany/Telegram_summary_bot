@@ -393,6 +393,58 @@ Resources:
                 "title": "Bot Added to Groups (hourly)",
                 "stacked": false
               }
+            },
+
+            {
+              "type": "text",
+              "x": 0, "y": 26, "width": 24, "height": 1,
+              "properties": {
+                "markdown": "## Token Usage by AI Provider"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0, "y": 27, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message '{\"_type\":\"TOKEN_USAGE_TOTAL\",*\"provider\":\"*\",*\"totalTokens\":*,\"apiCallCount\":*}' as @pre, provider, @mid, totalTokens, @rest | stats sum(totalTokens) as total_tokens by provider | sort total_tokens desc",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Total Tokens by Provider",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 27, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message '{\"_type\":\"TOKEN_USAGE_TOTAL\",*\"inputTokens\":*,\"outputTokens\":*,*}' as @pre, inputTokens, outputTokens, @rest | stats sum(inputTokens) as input_tokens, sum(outputTokens) as output_tokens by bin(5m)",
+                "region": "${AWS::Region}",
+                "view": "timeSeries",
+                "title": "Input vs Output Tokens",
+                "stacked": true
+              }
+            },
+            {
+              "type": "log",
+              "x": 0, "y": 33, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message '{\"_type\":\"TOKEN_USAGE_TOTAL\",*\"provider\":\"*\",*\"apiCallCount\":*}' as @pre, provider, @mid, apiCallCount | stats avg(apiCallCount) as avg_calls, max(apiCallCount) as max_calls by provider",
+                "region": "${AWS::Region}",
+                "view": "bar",
+                "title": "API Calls per Summary Request (avg / max)",
+                "stacked": false
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 33, "width": 12, "height": 6,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message '{\"_type\":\"TOKEN_USAGE_TOTAL\",*\"provider\":\"*\",\"model\":\"*\",\"chatId\":*,\"inputTokens\":*,\"outputTokens\":*,\"totalTokens\":*,\"apiCallCount\":*}' as @pre, provider, model, chatId, inputTokens, outputTokens, totalTokens, apiCallCount | fields @timestamp, provider, model, chatId, inputTokens, outputTokens, totalTokens, apiCallCount | sort @timestamp desc | limit 20",
+                "region": "${AWS::Region}",
+                "view": "table",
+                "title": "Recent Token Usage (last 20 requests)",
+                "stacked": false
+              }
             }
           ]
         }

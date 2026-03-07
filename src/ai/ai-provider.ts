@@ -17,8 +17,25 @@
 // ============================================================================
 
 /**
+ * Token usage information returned by AI providers
+ */
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Result of an AI summarization call, including the text and optional token usage
+ */
+export interface SummarizeResult {
+  text: string;
+  usage?: TokenUsage;
+}
+
+/**
  * Options for customizing the summarization behavior
- * 
+ *
  * These options allow fine-tuning of the AI model's output characteristics.
  */
 export interface SummarizeOptions {
@@ -55,7 +72,7 @@ export interface AIProvider {
    * @returns Promise resolving to the generated summary text
    * @throws AIProviderError if summarization fails
    */
-  summarize(messages: string[], options?: SummarizeOptions): Promise<string>;
+  summarize(messages: string[], options?: SummarizeOptions): Promise<SummarizeResult>;
   
   /**
    * Get the maximum number of context tokens supported by this provider

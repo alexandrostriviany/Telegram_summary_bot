@@ -10,7 +10,7 @@
  * **Validates: Requirements 5.4** - If AI_Provider fails, respond with user-friendly error message
  */
 
-import { AIProvider, AIProviderError, SummarizeOptions } from './ai-provider';
+import { AIProvider, AIProviderError, SummarizeOptions, SummarizeResult, TokenUsage } from './ai-provider';
 import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 
 // ============================================================================
@@ -150,9 +150,9 @@ export class OpenAIProvider implements AIProvider {
    * **Validates: Requirements 5.2** - Use OpenAI API for summarization
    * **Validates: Requirements 5.4** - Handle API errors gracefully
    */
-  async summarize(messages: string[], options?: SummarizeOptions): Promise<string> {
+  async summarize(messages: string[], options?: SummarizeOptions): Promise<SummarizeResult> {
     if (messages.length === 0) {
-      return '{"s":[],"q":[]}';
+      return { text: '{"s":[],"q":[]}' };
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
@@ -175,7 +175,9 @@ export class OpenAIProvider implements AIProvider {
 
     try {
       const response = await this.makeApiRequest(requestBody);
-      return this.extractSummaryFromResponse(response);
+      const text = this.extractSummaryFromResponse(response);
+      const usage = this.extractUsageFromResponse(response);
+      return { text, usage };
     } catch (error) {
       // Re-throw AIProviderError as-is
       if (error instanceof AIProviderError) {
@@ -343,6 +345,23 @@ export class OpenAIProvider implements AIProvider {
     }
 
     return content.trim();
+  }
+
+  /**
+   * Extract token usage from the API response
+   *
+   * @param response - The API response
+   * @returns TokenUsage if available, undefined otherwise
+   */
+  private extractUsageFromResponse(response: ChatCompletionResponse): TokenUsage | undefined {
+    if (!response.usage) {
+      return undefined;
+    }
+    return {
+      inputTokens: response.usage.prompt_tokens,
+      outputTokens: response.usage.completion_tokens,
+      totalTokens: response.usage.total_tokens,
+    };
   }
 
   /**

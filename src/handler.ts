@@ -18,7 +18,7 @@ import { createAdminHandler } from './commands/admin-handler';
 import { TelegramClient, createTelegramClient } from './telegram/telegram-client';
 import { createSummaryEngine } from './summary/summary-engine';
 import { createSummaryFormatter } from './summary/summary-formatter';
-import { createAIProvider, isAIProviderConfigured } from './ai/ai-provider';
+import { createAIProvider, isAIProviderConfigured, getProviderTypeFromEnv } from './ai/ai-provider';
 import { DynamoDBCreditsStore, CreditsStore } from './store/credits-store';
 import { handleError, formatErrorForTelegram } from './errors/error-handler';
 
@@ -414,8 +414,10 @@ export async function handler(
 
     // Register /summary command handler
     if (isAIProviderConfigured()) {
-      const aiProvider = createAIProvider();
-      const summaryEngine = createSummaryEngine(messageStore, aiProvider);
+      const providerType = getProviderTypeFromEnv();
+      const aiProvider = createAIProvider(providerType);
+      const model = process.env.LLM_MODEL ?? 'default';
+      const summaryEngine = createSummaryEngine(messageStore, aiProvider, providerType, model);
       const summaryFormatter = createSummaryFormatter();
 
       const summaryHandler = createSummaryHandler(

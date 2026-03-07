@@ -115,7 +115,7 @@ describe('BedrockProvider', () => {
 
     it('should return empty summary message for empty messages array', async () => {
       const result = await provider.summarize([]);
-      expect(result).toContain('No messages to summarize');
+      expect(result.text).toContain('No messages to summarize');
       expect(mockSend).not.toHaveBeenCalled();
     });
 
@@ -172,14 +172,25 @@ describe('BedrockProvider', () => {
       mockSend.mockResolvedValueOnce(createMockResponse(expectedSummary));
 
       const result = await provider.summarize(['Test message']);
-      expect(result).toBe(expectedSummary);
+      expect(result.text).toBe(expectedSummary);
     });
 
     it('should trim whitespace from response', async () => {
       mockSend.mockResolvedValueOnce(createMockResponse('  Summary with whitespace  \n'));
 
       const result = await provider.summarize(['Test message']);
-      expect(result).toBe('Summary with whitespace');
+      expect(result.text).toBe('Summary with whitespace');
+    });
+
+    it('should return token usage from API response', async () => {
+      mockSend.mockResolvedValueOnce(createMockResponse('Summary'));
+
+      const result = await provider.summarize(['Test message']);
+      expect(result.usage).toEqual({
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+      });
     });
 
     describe('error handling', () => {

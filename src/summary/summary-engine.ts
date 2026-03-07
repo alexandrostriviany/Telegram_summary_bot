@@ -14,7 +14,8 @@
 
 import { StoredMessage, MessageRange, MessageQuery } from '../types';
 import { MessageStore } from '../store/message-store';
-import { AIProvider } from '../ai/ai-provider';
+import { AIProvider, AIProviderType, SummarizeResult, TokenUsage } from '../ai/ai-provider';
+import { logTokenUsage, logAggregatedTokenUsage } from '../ai/token-usage-logger';
 import { COMBINE_SUMMARIES_PROMPT } from '../ai/prompts';
 import { NoMessagesError } from '../errors/error-handler';
 
@@ -110,16 +111,27 @@ export interface FormattedMessage {
 export class DefaultSummaryEngine implements SummaryEngine {
   private messageStore: MessageStore;
   private aiProvider: AIProvider;
+  private providerType: AIProviderType;
+  private model: string;
 
   /**
    * Create a new DefaultSummaryEngine instance
-   * 
+   *
    * @param messageStore - The message store to fetch messages from
    * @param aiProvider - The AI provider for summarization
+   * @param providerType - The AI provider type for logging (default: 'openai')
+   * @param model - The model identifier for logging (default: 'unknown')
    */
-  constructor(messageStore: MessageStore, aiProvider: AIProvider) {
+  constructor(
+    messageStore: MessageStore,
+    aiProvider: AIProvider,
+    providerType: AIProviderType = 'openai',
+    model: string = 'unknown'
+  ) {
     this.messageStore = messageStore;
     this.aiProvider = aiProvider;
+    this.providerType = providerType;
+    this.model = model;
   }
 
   /**
@@ -135,14 +147,14 @@ export class DefaultSummaryEngine implements SummaryEngine {
   async generateSummary(chatId: number, range: MessageRange): Promise<string> {
     // Fetch messages based on the range
     const messages = await this.fetchMessages(chatId, range);
-    
+
     if (messages.length === 0) {
       throw new NoMessagesError();
     }
 
     // Format messages for AI prompt
     const formattedMessages = this.formatMessagesForAI(messages);
-    
+
     // Estimate token count
     const tokenCount = this.estimateTokenCount(formattedMessages);
     const maxTokens = this.aiProvider.getMaxContextTokens() - TOKEN_BUFFER;
@@ -150,11 +162,16 @@ export class DefaultSummaryEngine implements SummaryEngine {
     // Check if we need hierarchical summarization
     // **Validates: Requirements 6.1, 6.2, 6.3, 8.3**
     if (tokenCount > maxTokens) {
-      return this.hierarchicalSummarize(formattedMessages);
+      return this.hierarchicalSummarize(formattedMessages, chatId);
     }
 
     // Generate summary using AI provider
-    return this.aiProvider.summarize(formattedMessages);
+    const result = await this.aiProvider.summarize(formattedMessages);
+    if (result.usage) {
+      logTokenUsage(this.providerType, this.model, chatId, result.usage, 'single');
+      logAggregatedTokenUsage(this.providerType, this.model, chatId, [result.usage], 1);
+    }
+    return result.text;
   }
 
   /**
@@ -348,20 +365,40 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * **Validates: Requirements 6.3** - Combine into final hierarchical summary
    * **Validates: Requirements 8.3** - Token overflow fallback
    */
-  async hierarchicalSummarize(messages: string[]): Promise<string> {
+  async hierarchicalSummarize(messages: string[], chatId?: number): Promise<string> {
     // Split messages into chunks that fit within token limit
     const chunks = this.splitIntoChunks(messages);
-    
+
     // Handle edge case: if only one chunk, just summarize directly
     if (chunks.length === 1) {
-      return this.aiProvider.summarize(chunks[0]);
+      const result = await this.aiProvider.summarize(chunks[0]);
+      if (result.usage && chatId !== undefined) {
+        logTokenUsage(this.providerType, this.model, chatId, result.usage, 'single');
+        logAggregatedTokenUsage(this.providerType, this.model, chatId, [result.usage], 1);
+      }
+      return result.text;
     }
 
     // Summarize each chunk separately
-    const chunkSummaries = await this.summarizeChunks(chunks);
+    const { summaries: chunkSummaries, usages: chunkUsages } = await this.summarizeChunks(chunks, chatId);
 
     // Combine chunk summaries into final summary
-    return this.combineChunkSummaries(chunkSummaries);
+    const { text: combinedText, usage: combineUsage } = await this.combineChunkSummaries(chunkSummaries, chatId);
+
+    // Log aggregated usage
+    if (chatId !== undefined) {
+      const allUsages = [...chunkUsages];
+      if (combineUsage) {
+        allUsages.push(combineUsage);
+      }
+      if (allUsages.length > 0) {
+        logAggregatedTokenUsage(
+          this.providerType, this.model, chatId, allUsages, chunks.length + 1
+        );
+      }
+    }
+
+    return combinedText;
   }
 
   /**
@@ -439,7 +476,10 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * 
    * **Validates: Requirements 6.2** - Summarize each chunk separately
    */
-  async summarizeChunks(chunks: string[][]): Promise<string[]> {
+  async summarizeChunks(
+    chunks: string[][],
+    chatId?: number
+  ): Promise<{ summaries: string[]; usages: TokenUsage[] }> {
     const totalChunks = chunks.length;
 
     const promises = chunks.map((chunk, i) => {
@@ -448,7 +488,21 @@ export class DefaultSummaryEngine implements SummaryEngine {
       return this.aiProvider.summarize(chunkWithContext);
     });
 
-    return Promise.all(promises);
+    const results = await Promise.all(promises);
+    const summaries: string[] = [];
+    const usages: TokenUsage[] = [];
+
+    for (const result of results) {
+      summaries.push(result.text);
+      if (result.usage) {
+        usages.push(result.usage);
+        if (chatId !== undefined) {
+          logTokenUsage(this.providerType, this.model, chatId, result.usage, 'chunk');
+        }
+      }
+    }
+
+    return { summaries, usages };
   }
 
   /**
@@ -462,14 +516,21 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * 
    * **Validates: Requirements 6.3** - Combine chunk summaries into final hierarchical summary
    */
-  async combineChunkSummaries(chunkSummaries: string[]): Promise<string> {
+  async combineChunkSummaries(
+    chunkSummaries: string[],
+    chatId?: number
+  ): Promise<SummarizeResult> {
     const combinationPrompt = [
       COMBINE_SUMMARIES_PROMPT,
       '',
       ...chunkSummaries,
     ];
 
-    return this.aiProvider.summarize(combinationPrompt);
+    const result = await this.aiProvider.summarize(combinationPrompt);
+    if (result.usage && chatId !== undefined) {
+      logTokenUsage(this.providerType, this.model, chatId, result.usage, 'combine');
+    }
+    return result;
   }
 }
 
@@ -482,7 +543,9 @@ export class DefaultSummaryEngine implements SummaryEngine {
  */
 export function createSummaryEngine(
   messageStore: MessageStore,
-  aiProvider: AIProvider
+  aiProvider: AIProvider,
+  providerType?: AIProviderType,
+  model?: string
 ): SummaryEngine {
-  return new DefaultSummaryEngine(messageStore, aiProvider);
+  return new DefaultSummaryEngine(messageStore, aiProvider, providerType, model);
 }

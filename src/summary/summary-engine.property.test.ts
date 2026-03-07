@@ -16,7 +16,7 @@
 
 import * as fc from 'fast-check';
 import { DefaultSummaryEngine } from './summary-engine';
-import { AIProvider, SummarizeOptions } from '../ai/ai-provider';
+import { AIProvider, SummarizeOptions, SummarizeResult } from '../ai/ai-provider';
 import { MessageStore } from '../store/message-store';
 import { StoredMessage, MessageQuery, MessageRange } from '../types';
 
@@ -61,14 +61,14 @@ class MockAIProvider implements AIProvider {
     this.maxContextTokens = maxContextTokens;
   }
 
-  async summarize(messages: string[], _options?: SummarizeOptions): Promise<string> {
+  async summarize(messages: string[], _options?: SummarizeOptions): Promise<SummarizeResult> {
     this.summarizeCalls.push([...messages]);
-    
+
     // Return a predictable summary based on call index
-    const response = this.summaryResponses[this.callIndex] ?? 
+    const text = this.summaryResponses[this.callIndex] ??
       `Summary ${this.callIndex + 1}: ${messages.length} messages summarized`;
     this.callIndex++;
-    return response;
+    return { text };
   }
 
   getMaxContextTokens(): number {

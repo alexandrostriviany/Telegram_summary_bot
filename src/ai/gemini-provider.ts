@@ -10,7 +10,7 @@
  * **Validates: Requirements 5.4** - If AI_Provider fails, respond with user-friendly error message
  */
 
-import { AIProvider, AIProviderError, SummarizeOptions } from './ai-provider';
+import { AIProvider, AIProviderError, SummarizeOptions, SummarizeResult, TokenUsage } from './ai-provider';
 import { SUMMARY_SYSTEM_PROMPT, SUMMARY_RESPONSE_SCHEMA } from './prompts';
 
 // ============================================================================
@@ -143,9 +143,9 @@ export class GeminiProvider implements AIProvider {
    * @returns Promise resolving to the generated summary text
    * @throws AIProviderError if the API call fails
    */
-  async summarize(messages: string[], options?: SummarizeOptions): Promise<string> {
+  async summarize(messages: string[], options?: SummarizeOptions): Promise<SummarizeResult> {
     if (messages.length === 0) {
-      return '{"s":[],"q":[]}';
+      return { text: '{"s":[],"q":[]}' };
     }
 
     const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS;
@@ -177,7 +177,9 @@ export class GeminiProvider implements AIProvider {
 
     try {
       const response = await this.makeApiRequest(requestBody);
-      return this.extractSummaryFromResponse(response);
+      const text = this.extractSummaryFromResponse(response);
+      const usage = this.extractUsageFromResponse(response);
+      return { text, usage };
     } catch (error) {
       if (error instanceof AIProviderError) {
         throw error;
@@ -365,6 +367,23 @@ export class GeminiProvider implements AIProvider {
     }
 
     return content.trim();
+  }
+
+  /**
+   * Extract token usage from the API response
+   *
+   * @param response - The API response
+   * @returns TokenUsage if available, undefined otherwise
+   */
+  private extractUsageFromResponse(response: GeminiResponse): TokenUsage | undefined {
+    if (!response.usageMetadata) {
+      return undefined;
+    }
+    return {
+      inputTokens: response.usageMetadata.promptTokenCount,
+      outputTokens: response.usageMetadata.candidatesTokenCount,
+      totalTokens: response.usageMetadata.totalTokenCount,
+    };
   }
 
   /**
