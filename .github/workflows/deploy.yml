@@ -45,16 +45,24 @@ jobs:
       - name: SAM deploy
         id: sam-deploy
         run: |
+          PARAMS="TelegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          PARAMS="$PARAMS LLMProvider=${{ vars.LLM_PROVIDER || 'gemini' }}"
+          PARAMS="$PARAMS AdminUserId=${{ secrets.ADMIN_USER_ID || '0' }}"
+
+          if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
+            PARAMS="$PARAMS OpenAIApiKey=${{ secrets.OPENAI_API_KEY }}"
+          fi
+          if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
+            PARAMS="$PARAMS GeminiApiKey=${{ secrets.GEMINI_API_KEY }}"
+          fi
+          if [ -n "${{ vars.LLM_MODEL }}" ]; then
+            PARAMS="$PARAMS LLMModel=${{ vars.LLM_MODEL }}"
+          fi
+
           sam deploy \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              TelegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
-              OpenAIApiKey=${{ secrets.OPENAI_API_KEY }} \
-              LLMProvider=${{ vars.LLM_PROVIDER || 'gemini' }} \
-              LLMModel=${{ vars.LLM_MODEL || '' }} \
-              GeminiApiKey=${{ secrets.GEMINI_API_KEY }} \
-              AdminUserId=${{ secrets.ADMIN_USER_ID || '0' }}
+            --parameter-overrides $PARAMS
 
       - name: Get stack outputs
         id: get-outputs
