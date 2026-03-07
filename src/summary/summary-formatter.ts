@@ -2,12 +2,12 @@
  * Summary Formatter Implementation
  *
  * Parses JSON summaries from the AI provider and renders them as
- * Telegram-friendly HTML text with bold topic names and bullet highlights.
+ * Telegram-friendly HTML text with bold topic names and blockquote summaries.
  *
  * The AI provider returns JSON:
- *   {"t":[{"n":"Topic","h":["highlight1","highlight2"]}],"q":["question?"]}
+ *   {"t":[{"n":"Topic","s":"Summary paragraph."}],"q":["question?"]}
  * This module renders it into the final user-facing format.
- * Falls back to the legacy flat format or raw text if parsing fails.
+ * Falls back to legacy formats or raw text if parsing fails.
  *
  * @module summary/summary-formatter
  */
@@ -34,27 +34,19 @@ export interface SummaryFormatter {
 }
 
 /**
- * A single topic with a name and highlights.
+ * A single topic with a name and summary paragraph.
  */
 export interface TopicJson {
   n: string;
-  h: string[];
+  s: string;
 }
 
 /**
- * Parsed summary structure matching the new AI provider JSON output.
- * "t" for topics (each with name + highlights), "q" for open questions.
+ * Parsed summary structure matching the AI provider JSON output.
+ * "t" for topics (each with name + summary), "q" for open questions.
  */
 export interface SummaryJson {
   t: TopicJson[];
-  q: string[];
-}
-
-/**
- * Legacy flat summary structure for backward compatibility.
- */
-export interface LegacySummaryJson {
-  s: string[];
   q: string[];
 }
 
@@ -77,23 +69,31 @@ function escapeHtml(text: string): string {
 // ============================================================================
 
 /**
- * Attempt to parse a raw string as the new topic-based SummaryJson.
- * Returns null if parsing fails or the structure is invalid.
+ * Attempt to parse a raw string as topic-based SummaryJson.
+ * Supports the current format (t with n+s), the previous format (t with n+h),
+ * and the legacy flat format (s array). Returns null if parsing fails.
  */
 export function tryParseSummaryJson(raw: string): SummaryJson | null {
   try {
     const parsed = JSON.parse(raw);
     if (!parsed) return null;
 
-    // New format: { t: [...], q: [...] }
+    // Current format: { t: [{ n, s }], q: [...] }
     if (Array.isArray(parsed.t)) {
       const topics: TopicJson[] = [];
       for (const item of parsed.t) {
-        if (item && typeof item.n === 'string' && Array.isArray(item.h)) {
-          topics.push({
-            n: item.n,
-            h: item.h.filter((x: unknown): x is string => typeof x === 'string'),
-          });
+        if (item && typeof item.n === 'string') {
+          // Current: { n, s } where s is a string
+          if (typeof item.s === 'string') {
+            topics.push({ n: item.n, s: item.s });
+          }
+          // Previous: { n, h } where h is an array — join into paragraph
+          else if (Array.isArray(item.h)) {
+            const highlights = item.h.filter((x: unknown): x is string => typeof x === 'string');
+            if (highlights.length > 0) {
+              topics.push({ n: item.n, s: highlights.join('. ') });
+            }
+          }
         }
       }
       if (topics.length > 0) {
@@ -106,14 +106,14 @@ export function tryParseSummaryJson(raw: string): SummaryJson | null {
       }
     }
 
-    // Legacy format: { s: [...], q: [...] } — convert to new structure
+    // Legacy flat format: { s: [...], q: [...] } — convert to topic structure
     if (Array.isArray(parsed.s)) {
       const legacyPoints: string[] = parsed.s.filter(
         (x: unknown): x is string => typeof x === 'string'
       );
       if (legacyPoints.length > 0) {
         return {
-          t: legacyPoints.map(point => ({ n: '', h: [point] })),
+          t: legacyPoints.map(point => ({ n: '', s: point })),
           q: Array.isArray(parsed.q)
             ? parsed.q.filter((x: unknown): x is string => typeof x === 'string')
             : [],
@@ -133,7 +133,7 @@ export function tryParseSummaryJson(raw: string): SummaryJson | null {
 
 /**
  * Render a SummaryJson object into Telegram-friendly HTML text.
- * Topics are rendered with bold names and bullet highlights.
+ * Topics are rendered with bold names and blockquote summaries.
  */
 export function renderSummary(data: SummaryJson): string {
   const lines: string[] = [HEADER];
@@ -143,9 +143,7 @@ export function renderSummary(data: SummaryJson): string {
     if (topic.n) {
       lines.push(`<b>${escapeHtml(topic.n)}</b>`);
     }
-    for (const highlight of topic.h) {
-      lines.push(`• ${escapeHtml(highlight)}`);
-    }
+    lines.push(`<blockquote>${escapeHtml(topic.s)}</blockquote>`);
   }
 
   if (data.q.length > 0) {
@@ -172,7 +170,7 @@ function renderAndTruncate(data: SummaryJson): string {
 
   // First try removing questions
   const truncated: SummaryJson = {
-    t: data.t.map(topic => ({ n: topic.n, h: [...topic.h] })),
+    t: data.t.map(topic => ({ ...topic })),
     q: [...data.q],
   };
   if (truncated.q.length > 0) {
@@ -186,15 +184,6 @@ function renderAndTruncate(data: SummaryJson): string {
   // Then remove topics from the end, keeping at least 1
   while (truncated.t.length > 1) {
     truncated.t.pop();
-    rendered = renderSummary(truncated);
-    if (rendered.length <= MAX_OUTPUT_LENGTH) {
-      return rendered;
-    }
-  }
-
-  // Then trim highlights from the remaining topic
-  while (truncated.t[0].h.length > 1) {
-    truncated.t[0].h.pop();
     rendered = renderSummary(truncated);
     if (rendered.length <= MAX_OUTPUT_LENGTH) {
       return rendered;
@@ -224,7 +213,7 @@ export class DefaultSummaryFormatter implements SummaryFormatter {
     // Try to parse as JSON (expected format from AI providers)
     const parsed = tryParseSummaryJson(trimmed);
     if (parsed) {
-      const hasContent = parsed.t.some(topic => topic.h.length > 0);
+      const hasContent = parsed.t.some(topic => topic.s.length > 0);
       if (!hasContent && parsed.q.length === 0) {
         return EMPTY_SUMMARY;
       }

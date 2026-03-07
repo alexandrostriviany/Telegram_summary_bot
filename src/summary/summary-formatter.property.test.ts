@@ -34,16 +34,18 @@ describe('Property Tests: Summary Output Formatting', () => {
     );
   });
 
-  it('should never contain unescaped < or > in output', () => {
+  it('should never contain unescaped < or > in output (outside our own tags)', () => {
     fc.assert(
       fc.property(
         fc.string({ minLength: 1, maxLength: 300 }).filter(s => s.trim().length > 0),
         (input: string) => {
           const result = formatter.format(input);
-          // After removing our own HTML tags and entities, raw < > should not appear
+          // Strip our known HTML tags, then check no raw < > remain
           const withoutOurTags = result
             .replace(/<b>/g, '')
-            .replace(/<\/b>/g, '');
+            .replace(/<\/b>/g, '')
+            .replace(/<blockquote>/g, '')
+            .replace(/<\/blockquote>/g, '');
           const withoutEntities = withoutOurTags
             .replace(/&amp;/g, '')
             .replace(/&lt;/g, '')
@@ -63,10 +65,7 @@ describe('Property Tests: Summary Output Formatting', () => {
         fc.array(
           fc.record({
             n: fc.string({ minLength: 1, maxLength: 30 }).filter(s => s.trim().length > 0),
-            h: fc.array(
-              fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
-              { minLength: 1, maxLength: 3 }
-            ),
+            s: fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length > 0),
           }),
           { minLength: 1, maxLength: 5 }
         ),
@@ -75,7 +74,7 @@ describe('Property Tests: Summary Output Formatting', () => {
           const json = JSON.stringify({ t: topics, q: questions });
           const result = formatter.format(json);
           expect(result).toContain('🧵');
-          expect(result).toContain('•');
+          expect(result).toContain('<blockquote>');
           return true;
         }
       ),
@@ -104,7 +103,7 @@ describe('Property Tests: Summary Output Formatting', () => {
         fc.array(
           fc.record({
             n: fc.string({ minLength: 5, maxLength: 30 }),
-            h: fc.array(fc.string({ minLength: 10, maxLength: 200 }), { minLength: 1, maxLength: 5 }),
+            s: fc.string({ minLength: 10, maxLength: 200 }),
           }),
           { minLength: 1, maxLength: 50 }
         ),
