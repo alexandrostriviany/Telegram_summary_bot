@@ -61,6 +61,7 @@ jobs:
 
           sam deploy \
             --stack-name telegram-summary-bot \
+            --resolve-s3 \
             --s3-prefix telegram-summary-bot \
             --region ${{ vars.AWS_REGION }} \
             --capabilities CAPABILITY_IAM \
