@@ -1,9 +1,7 @@
 /**
  * Credits Command Handler for Telegram Summary Bot
  *
- * Shows the user's remaining daily credits.
- * In groups: looks up chat owner's credits.
- * In private chats: uses sender's credits.
+ * Shows the invoking user's remaining daily credits.
  *
  * @module commands/credits-handler
  */
@@ -30,21 +28,8 @@ export class CreditsHandler implements CommandHandler {
   async execute(message: Message, _args: string[]): Promise<void> {
     const chatId = message.chat.id;
 
-    let userId: number;
-
-    if (message.chat.type === 'private') {
-      // Private chat: use sender's credits
-      userId = message.from?.id ?? 0;
-    } else {
-      // Group chat: look up chat owner's credits
-      const ownership = await this.creditsStore.getChatOwner(chatId);
-      if (ownership) {
-        userId = ownership.ownerUserId;
-      } else {
-        // No owner recorded — use sender as fallback
-        userId = message.from?.id ?? 0;
-      }
-    }
+    // Always show the invoking user's own credits
+    const userId = message.from?.id ?? 0;
 
     if (userId === 0) {
       await this.sendMessage(chatId, 'Unable to determine user for credit lookup.');

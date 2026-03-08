@@ -52,6 +52,13 @@ export interface ChatOwnership {
  */
 export interface CreditsStore {
   /**
+   * Check if a user record exists without creating one
+   * @param userId - The Telegram user ID
+   * @returns true if the user has started the bot (record exists)
+   */
+  userExists(userId: number): Promise<boolean>;
+
+  /**
    * Get or create a user credit record
    * @param userId - The Telegram user ID
    * @returns The user's credit record
@@ -147,6 +154,18 @@ export class DynamoDBCreditsStore implements CreditsStore {
     this.creditsTableName = creditsTableName ?? process.env.CREDITS_TABLE ?? 'telegram-summary-user-credits';
     this.ownershipTableName = ownershipTableName ?? process.env.CHAT_OWNERSHIP_TABLE ?? 'telegram-summary-chat-ownership';
     this.defaultDailyLimit = defaultDailyLimit ?? parseInt(process.env.DEFAULT_DAILY_CREDITS ?? String(DEFAULT_DAILY_LIMIT), 10);
+  }
+
+  async userExists(userId: number): Promise<boolean> {
+    const getCommand = new GetItemCommand({
+      TableName: this.creditsTableName,
+      Key: {
+        userId: { N: String(userId) },
+      },
+    });
+
+    const response = await this.client.send(getCommand);
+    return !!response.Item;
   }
 
   async getOrCreateUser(userId: number): Promise<UserCredits> {

@@ -60,6 +60,7 @@ const mockTelegramClient: jest.Mocked<TelegramClient> = {
 
 // Mock CreditsStore
 const mockCreditsStore: jest.Mocked<CreditsStore> = {
+  userExists: jest.fn().mockResolvedValue(true),
   getOrCreateUser: jest.fn().mockResolvedValue({
     userId: 0, dailyLimit: 10, creditsUsedToday: 0,
     lastResetDate: '2026-03-06', isPaid: false, createdAt: 0,

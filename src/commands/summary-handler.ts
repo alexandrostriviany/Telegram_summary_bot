@@ -364,7 +364,7 @@ export class SummaryHandler implements CommandHandler {
   }
 
   /**
-   * Handle summary request from a group chat (existing behavior, unchanged)
+   * Handle summary request from a group or private chat
    */
   private async executeGroupSummary(message: Message, range: MessageRange): Promise<void> {
     const chatId = message.chat.id;
@@ -372,19 +372,24 @@ export class SummaryHandler implements CommandHandler {
     try {
       // Check credits before generating summary
       if (this.creditsStore) {
-        let creditOwnerId: number;
+        const userId = message.from?.id ?? 0;
 
-        if (message.chat.type === 'private') {
-          creditOwnerId = message.from?.id ?? 0;
-        } else {
-          const ownership = await this.creditsStore.getChatOwner(chatId);
-          creditOwnerId = ownership ? ownership.ownerUserId : (message.from?.id ?? 0);
+        if (userId !== 0 && message.chat.type !== 'private') {
+          // Group chat: verify user has started the bot
+          const exists = await this.creditsStore.userExists(userId);
+          if (!exists) {
+            await this.sendMessage(
+              chatId,
+              '⚠️ To use /summary, please start the bot first by messaging @SummaryBot privately.'
+            );
+            return;
+          }
         }
 
-        if (creditOwnerId !== 0) {
-          const consumed = await this.creditsStore.consumeCredit(creditOwnerId);
+        if (userId !== 0) {
+          const consumed = await this.creditsStore.consumeCredit(userId);
           if (!consumed) {
-            throw new CreditsExhaustedError(undefined, creditOwnerId);
+            throw new CreditsExhaustedError(undefined, userId);
           }
         }
       }

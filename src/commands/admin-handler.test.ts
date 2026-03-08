@@ -36,6 +36,7 @@ describe('AdminHandler', () => {
   beforeEach(() => {
     mockSendMessage = jest.fn().mockResolvedValue(undefined);
     mockCreditsStore = {
+      userExists: jest.fn().mockResolvedValue(true),
       getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
       consumeCredit: jest.fn().mockResolvedValue(true),
       getCredits: jest.fn().mockResolvedValue(defaultCredits),
