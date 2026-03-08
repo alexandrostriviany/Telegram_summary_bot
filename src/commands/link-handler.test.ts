@@ -25,6 +25,7 @@ function createMockTelegramClient(): jest.Mocked<TelegramClient> {
     deleteForumTopic: jest.fn(),
     closeForumTopic: jest.fn(),
     reopenForumTopic: jest.fn(),
+    getChat: jest.fn().mockResolvedValue({ id: 0, type: 'supergroup', title: 'Test Group' }),
     getChatMember: jest.fn(),
     sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
     answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
@@ -231,9 +232,10 @@ describe('handleLinkCallback', () => {
   });
 
   it('should create topic, store link, and confirm', async () => {
+    mockClient.getChat.mockResolvedValueOnce({ id: -1001111111111, type: 'supergroup', title: 'Dev Team Chat' });
     mockClient.createForumTopic.mockResolvedValueOnce({
       message_thread_id: 99,
-      name: 'Group -1001111111111',
+      name: 'Dev Team Chat',
       icon_color: 0,
     });
 
@@ -246,7 +248,8 @@ describe('handleLinkCallback', () => {
       mockStore,
     );
 
-    expect(mockClient.createForumTopic).toHaveBeenCalledWith(100, 'Group -1001111111111');
+    expect(mockClient.getChat).toHaveBeenCalledWith(-1001111111111);
+    expect(mockClient.createForumTopic).toHaveBeenCalledWith(100, 'Dev Team Chat');
     expect(mockStore.createLink).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 42,

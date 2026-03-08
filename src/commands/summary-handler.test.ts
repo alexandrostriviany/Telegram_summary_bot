@@ -475,6 +475,7 @@ describe('SummaryHandler with credits', () => {
       setDailyLimit: jest.fn().mockResolvedValue(undefined),
       setChatOwner: jest.fn().mockResolvedValue(undefined),
       getChatOwner: jest.fn().mockResolvedValue(null),
+      getAllChats: jest.fn().mockResolvedValue([]),
     };
     handler = new SummaryHandler(mockSendMessage, mockGenerateSummary, mockCreditsStore);
   });
@@ -591,6 +592,7 @@ describe('SummaryHandler private topic flow', () => {
       setDailyLimit: jest.fn().mockResolvedValue(undefined),
       setChatOwner: jest.fn().mockResolvedValue(undefined),
       getChatOwner: jest.fn().mockResolvedValue(null),
+      getAllChats: jest.fn().mockResolvedValue([]),
     };
     mockTopicLinkStore = {
       createLink: jest.fn().mockResolvedValue(undefined),
@@ -610,6 +612,7 @@ describe('SummaryHandler private topic flow', () => {
       deleteForumTopic: jest.fn().mockResolvedValue(undefined),
       closeForumTopic: jest.fn().mockResolvedValue(undefined),
       reopenForumTopic: jest.fn().mockResolvedValue(undefined),
+      getChat: jest.fn().mockResolvedValue({ id: 0, type: 'supergroup', title: 'Test Group' }),
       getChatMember: jest.fn(),
       sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
       answerCallbackQuery: jest.fn().mockResolvedValue(undefined),

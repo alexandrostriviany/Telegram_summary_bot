@@ -158,11 +158,14 @@ export async function handleLinkCallback(
     return;
   }
 
-  // Create forum topic in the private chat
-  // Use the group title or a fallback as the topic name
-  const groupTitle = callbackData.split(':').length > 2
-    ? callbackData.split(':').slice(2).join(':')
-    : `Group ${groupChatId}`;
+  // Fetch the real group title via Telegram API
+  let groupTitle = `Group ${groupChatId}`;
+  try {
+    const chatInfo = await telegramClient.getChat(groupChatId);
+    groupTitle = chatInfo.title ?? groupTitle;
+  } catch {
+    // Use fallback title if getChat fails
+  }
 
   let topicThreadId: number;
   try {

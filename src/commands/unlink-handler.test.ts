@@ -45,6 +45,7 @@ describe('UnlinkHandler', () => {
       deleteForumTopic: jest.fn().mockResolvedValue(undefined),
       closeForumTopic: jest.fn().mockResolvedValue(undefined),
       reopenForumTopic: jest.fn().mockResolvedValue(undefined),
+      getChat: jest.fn().mockResolvedValue({ id: 0, type: 'supergroup', title: 'Test Group' }),
       getChatMember: jest.fn(),
       sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
       answerCallbackQuery: jest.fn().mockResolvedValue(undefined),

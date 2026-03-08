@@ -570,8 +570,37 @@ export async function handler(
       topicLinkStore,
       membershipService,
       async (userId: number) => {
-        const records = await userGroupStore.getUserGroups(userId);
-        return records.map(r => ({ chatId: r.groupChatId, title: r.groupTitle }));
+        // Merge two sources: passive tracking table + all known groups from ownership table
+        const [userRecords, allChats] = await Promise.all([
+          userGroupStore.getUserGroups(userId),
+          creditsStore.getAllChats(),
+        ]);
+
+        // Build a map to deduplicate by groupChatId
+        const groupMap = new Map<number, { chatId: number; title: string }>();
+
+        // Add groups from passive tracking (have accurate titles)
+        for (const r of userRecords) {
+          groupMap.set(r.groupChatId, { chatId: r.groupChatId, title: r.groupTitle });
+        }
+
+        // Add groups from ownership table (bot is present in these)
+        // Fetch real titles via getChat API for groups not in passive tracking
+        for (const chat of allChats) {
+          if (!groupMap.has(chat.chatId)) {
+            try {
+              const chatInfo = await telegramClient.getChat(chat.chatId);
+              groupMap.set(chat.chatId, {
+                chatId: chat.chatId,
+                title: chatInfo.title ?? `Group ${chat.chatId}`,
+              });
+            } catch {
+              // Bot may have been removed from this group — skip it
+            }
+          }
+        }
+
+        return Array.from(groupMap.values());
       }
     );
     commandRouter.register('link', linkHandler);

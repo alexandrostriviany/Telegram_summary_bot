@@ -42,6 +42,7 @@ describe('AdminHandler', () => {
       setDailyLimit: jest.fn().mockResolvedValue(undefined),
       setChatOwner: jest.fn().mockResolvedValue(undefined),
       getChatOwner: jest.fn().mockResolvedValue(null),
+      getAllChats: jest.fn().mockResolvedValue([]),
     };
     handler = new AdminHandler(mockSendMessage, mockCreditsStore, ADMIN_ID);
   });

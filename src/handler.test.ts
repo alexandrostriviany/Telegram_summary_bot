@@ -48,6 +48,7 @@ const mockTelegramClient: jest.Mocked<TelegramClient> = {
   getChatMember: jest.fn().mockResolvedValue({ status: 'member', user: { id: 0, first_name: '' } }),
   sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
   answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
+  getChat: jest.fn().mockResolvedValue({ id: 0, type: 'supergroup', title: 'Test Group' }),
 };
 
 // Mock CreditsStore
@@ -64,6 +65,7 @@ const mockCreditsStore: jest.Mocked<CreditsStore> = {
   setDailyLimit: jest.fn().mockResolvedValue(undefined),
   setChatOwner: jest.fn().mockResolvedValue(undefined),
   getChatOwner: jest.fn().mockResolvedValue(null),
+  getAllChats: jest.fn().mockResolvedValue([]),
 };
 
 // Mock TopicLinkStore

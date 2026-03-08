@@ -70,6 +70,14 @@ export interface TelegramClient {
   reopenForumTopic(chatId: number, threadId: number): Promise<void>;
 
   /**
+   * Get up-to-date information about a chat
+   *
+   * @param chatId - The chat ID
+   * @returns Object with at least id, type, and title fields
+   */
+  getChat(chatId: number): Promise<{ id: number; type: string; title?: string }>;
+
+  /**
    * Get information about a member of a chat
    *
    * @param chatId - The chat ID
@@ -275,6 +283,10 @@ export class TelegramBotClient implements TelegramClient {
   async reopenForumTopic(chatId: number, threadId: number): Promise<void> {
     const url = `${this.apiBaseUrl}${this.botToken}/reopenForumTopic`;
     await this.makeApiCall(url, { chat_id: chatId, message_thread_id: threadId });
+  }
+
+  async getChat(chatId: number): Promise<{ id: number; type: string; title?: string }> {
+    return this.callApi<{ id: number; type: string; title?: string }>('getChat', { chat_id: chatId });
   }
 
   async getChatMember(chatId: number, userId: number): Promise<ChatMember> {

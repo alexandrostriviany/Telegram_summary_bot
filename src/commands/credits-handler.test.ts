@@ -31,6 +31,7 @@ describe('CreditsHandler', () => {
       setDailyLimit: jest.fn().mockResolvedValue(undefined),
       setChatOwner: jest.fn().mockResolvedValue(undefined),
       getChatOwner: jest.fn().mockResolvedValue(null),
+      getAllChats: jest.fn().mockResolvedValue([]),
     };
     handler = new CreditsHandler(mockSendMessage, mockCreditsStore);
   });
