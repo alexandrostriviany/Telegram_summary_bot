@@ -95,7 +95,7 @@ describe('LinkHandler', () => {
     expect(mockMembership.isGroupMember).toHaveBeenCalledTimes(2);
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
-      'Select a group to link to this topic:',
+      'Select a group to link to this topic.\nIf already linked, it will be re-linked here.',
       {
         inline_keyboard: [
           [{ text: 'Group A', callback_data: 'link:-1001111111111' }],
@@ -154,7 +154,7 @@ describe('LinkHandler', () => {
 
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
-      'Select a group to link to this topic:',
+      'Select a group to link to this topic.\nIf already linked, it will be re-linked here.',
       {
         inline_keyboard: [
           [{ text: 'Group A', callback_data: 'link:-1001111111111' }],
@@ -196,7 +196,7 @@ describe('LinkHandler', () => {
     // Both groups shown — re-linking is allowed
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
-      'Select a group to link to this topic:',
+      'Select a group to link to this topic.\nIf already linked, it will be re-linked here.',
       {
         inline_keyboard: [
           [{ text: 'Group A', callback_data: 'link:-1001111111111' }],
@@ -317,7 +317,7 @@ describe('handleLinkCallback', () => {
         groupChatId: -1001111111111,
       }),
     );
-    expect(mockClient.answerCallbackQuery).toHaveBeenCalledWith('cb-123', 'Group linked!');
+    expect(mockClient.answerCallbackQuery).toHaveBeenCalledWith('cb-123', 'Group re-linked!');
   });
 
   it('should handle createForumTopic failure', async () => {
