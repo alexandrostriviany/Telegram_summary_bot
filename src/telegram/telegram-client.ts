@@ -114,6 +114,16 @@ export interface TelegramClient {
   answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>;
 
   /**
+   * Edit the text of a message sent by the bot
+   *
+   * @param chatId - The chat ID
+   * @param messageId - The message ID to edit
+   * @param text - The new text (supports HTML)
+   * @param keyboard - Optional inline keyboard to attach
+   */
+  editMessageText(chatId: number, messageId: number, text: string, keyboard?: InlineKeyboardMarkup): Promise<void>;
+
+  /**
    * Set the list of the bot's commands for a given scope
    *
    * @param commands - Array of BotCommand objects
@@ -342,6 +352,20 @@ export class TelegramBotClient implements TelegramClient {
     };
     if (threadId !== undefined) {
       body.message_thread_id = threadId;
+    }
+    await this.makeApiCall(url, body);
+  }
+
+  async editMessageText(chatId: number, messageId: number, text: string, keyboard?: InlineKeyboardMarkup): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/editMessageText`;
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: 'HTML',
+    };
+    if (keyboard) {
+      body.reply_markup = keyboard;
     }
     await this.makeApiCall(url, body);
   }

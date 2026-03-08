@@ -35,6 +35,7 @@ function createMockTelegramClient(): jest.Mocked<TelegramClient> {
     getChat: jest.fn().mockResolvedValue({ id: -100, type: 'supergroup', title: 'Test Group' }),
     getChatMember: jest.fn().mockResolvedValue({ status: 'member', user: { id: 1, first_name: 'U' } }),
     answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
+    editMessageText: jest.fn().mockResolvedValue(undefined),
     setMyCommands: jest.fn().mockResolvedValue(undefined),
     getMe: jest.fn().mockResolvedValue({ id: 123, is_bot: true, first_name: 'Bot' }),
   };

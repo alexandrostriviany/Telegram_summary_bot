@@ -490,7 +490,8 @@ export async function handleCallbackQuery(
   telegramClient: TelegramClient,
   topicLinkStore: TopicLinkStore,
   unlinkHandler: ReturnType<typeof createUnlinkHandler>,
-  commandRouter?: CommandRouter
+  commandRouter?: CommandRouter,
+  creditsStore?: CreditsStore
 ): Promise<void> {
   const { id: callbackQueryId, from, message, data } = callbackQuery;
 
@@ -531,16 +532,59 @@ export async function handleCallbackQuery(
       // Unlink cancel callback
       await unlinkHandler.handleCancel(callbackQueryId);
     } else if (data.startsWith('menu:') && commandRouter) {
-      // Menu button callback: route to the corresponding command handler
+      // Menu button callback: edit the original message in place to keep chat clean
       const commandName = data.slice('menu:'.length);
-      const fakeMessage: Message = {
-        message_id: message?.message_id ?? 0,
-        chat: message?.chat ?? { id: privateChatId, type: 'private' as const },
-        from,
-        date: Math.floor(Date.now() / 1000),
-        text: `/${commandName}`,
+      const originalMessageId = message?.message_id;
+      const menuKeyboard: InlineKeyboardMarkup = {
+        inline_keyboard: [
+          [
+            { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
+            { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
+          ],
+          [
+            { text: '\u{1F4CA} Credits', callback_data: 'menu:credits' },
+            { text: '\u2753 Help', callback_data: 'menu:help' },
+          ],
+        ],
       };
-      await commandRouter.route(fakeMessage);
+
+      // For /link, route normally (it needs to send an inline keyboard with group choices)
+      if (commandName === 'link') {
+        const fakeMessage: Message = {
+          message_id: originalMessageId ?? 0,
+          chat: message?.chat ?? { id: privateChatId, type: 'private' as const },
+          from,
+          date: Math.floor(Date.now() / 1000),
+          text: '/link',
+        };
+        await commandRouter.route(fakeMessage);
+      } else if (originalMessageId) {
+        // Edit the original message in place with the command's response
+        // Create a sender that edits instead of sending new messages
+        const editSendMsg = (_chatId: number, text: string) =>
+          telegramClient.editMessageText(privateChatId, originalMessageId, text, menuKeyboard);
+
+        // Build a temporary router with the edit-based sender
+        const editRouter = createCommandRouter(editSendMsg);
+
+        // Re-register only the needed handlers with the edit sender
+        if (commandName === 'help') {
+          editRouter.register('help', createHelpHandler(editSendMsg));
+        } else if (commandName === 'credits' && creditsStore) {
+          editRouter.register('credits', createCreditsHandler(editSendMsg, creditsStore));
+        } else if (commandName === 'groups') {
+          editRouter.register('groups', createGroupsHandler(editSendMsg, topicLinkStore));
+        }
+
+        const fakeMessage: Message = {
+          message_id: originalMessageId,
+          chat: message?.chat ?? { id: privateChatId, type: 'private' as const },
+          from,
+          date: Math.floor(Date.now() / 1000),
+          text: `/${commandName}`,
+        };
+        await editRouter.route(fakeMessage);
+      }
       await telegramClient.answerCallbackQuery(callbackQueryId);
     } else {
       await telegramClient.answerCallbackQuery(callbackQueryId, 'Unknown action.');
@@ -681,8 +725,8 @@ export async function handler(
     const chatType = update.message?.chat.type ?? update.callback_query?.message?.chat.type;
     const isPrivateChat = chatType === 'private';
 
-    // In private chats, every bot reply gets inline menu buttons
-    const MENU_KEYBOARD: InlineKeyboardMarkup = {
+    // Full menu buttons for service messages in private chats
+    const FULL_MENU_KEYBOARD: InlineKeyboardMarkup = {
       inline_keyboard: [
         [
           { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
@@ -695,8 +739,23 @@ export async function handler(
       ],
     };
 
+    // Minimal buttons for summary messages
+    const SUMMARY_KEYBOARD: InlineKeyboardMarkup = {
+      inline_keyboard: [
+        [
+          { text: '\u{1F4CA} Credits', callback_data: 'menu:credits' },
+          { text: '\u2753 Help', callback_data: 'menu:help' },
+        ],
+      ],
+    };
+
     const sendMsg = isPrivateChat
-      ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, MENU_KEYBOARD, threadId)
+      ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, FULL_MENU_KEYBOARD, threadId)
+      : (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
+
+    // Summary-specific sender with minimal buttons
+    const sendSummaryMsg = isPrivateChat
+      ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, SUMMARY_KEYBOARD, threadId)
       : (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
     // Create command router with Telegram client's sendMessage method
@@ -788,7 +847,7 @@ export async function handler(
       const summaryFormatter = createSummaryFormatter();
 
       const summaryHandler = createSummaryHandler(
-        sendMsg,
+        sendSummaryMsg,
         async (chatId: number, range, threadId?: number) => {
           const rawSummary = await summaryEngine.generateSummary(chatId, range, threadId);
           return summaryFormatter.format(rawSummary);
@@ -805,7 +864,7 @@ export async function handler(
     if (update.callback_query) {
       const generalSendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
       const unlinkHandler = createUnlinkHandler(generalSendMsg, topicLinkStore, telegramClient);
-      await handleCallbackQuery(update.callback_query, telegramClient, topicLinkStore, unlinkHandler, commandRouter);
+      await handleCallbackQuery(update.callback_query, telegramClient, topicLinkStore, unlinkHandler, commandRouter, creditsStore);
 
       return {
         statusCode: 200,

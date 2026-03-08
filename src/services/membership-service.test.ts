@@ -21,6 +21,7 @@ function createMockTelegramClient(): jest.Mocked<TelegramClient> {
     getChatMember: jest.fn(),
     sendInlineKeyboard: jest.fn(),
     answerCallbackQuery: jest.fn(),
+    editMessageText: jest.fn(),
     setMyCommands: jest.fn(),
     getMe: jest.fn(),
     sendWithReplyKeyboard: jest.fn(),

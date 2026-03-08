@@ -51,6 +51,7 @@ const mockTelegramClient: jest.Mocked<TelegramClient> = {
   getChatMember: jest.fn().mockResolvedValue({ status: 'member', user: { id: 0, first_name: '' } }),
   sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
   answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
+    editMessageText: jest.fn().mockResolvedValue(undefined),
   getChat: jest.fn().mockResolvedValue({ id: 0, type: 'supergroup', title: 'Test Group' }),
   setMyCommands: jest.fn().mockResolvedValue(undefined),
   getMe: jest.fn().mockResolvedValue({ id: 123456789, is_bot: true, first_name: 'SummaryBot' }),
