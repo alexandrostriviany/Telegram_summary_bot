@@ -20,6 +20,7 @@ import {
 import { TelegramClient } from '../telegram/telegram-client';
 import { TopicLinkStore } from '../store/topic-link-store';
 import { MembershipService } from '../services/membership-service';
+import { CreditsStore, UserCredits } from '../store/credits-store';
 // ---- helpers ----
 
 function createMockTelegramClient(): jest.Mocked<TelegramClient> {
@@ -127,6 +128,95 @@ describe('StartHandler', () => {
       expect(mockSendMessage).toHaveBeenCalledWith(100, WELCOME_MESSAGE);
     });
 
+  });
+
+  describe('user credit record creation on /start', () => {
+    it('should call getOrCreateUser during private chat onboarding', async () => {
+      const defaultCredits: UserCredits = {
+        userId: 42,
+        dailyLimit: 10,
+        creditsUsedToday: 0,
+        lastResetDate: '2026-03-08',
+        isPaid: false,
+        createdAt: 1700000000000,
+      };
+      const mockCreditsStore: jest.Mocked<CreditsStore> = {
+        userExists: jest.fn().mockResolvedValue(true),
+        getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
+        consumeCredit: jest.fn().mockResolvedValue(true),
+        getCredits: jest.fn().mockResolvedValue(defaultCredits),
+        setDailyLimit: jest.fn().mockResolvedValue(undefined),
+        setChatOwner: jest.fn().mockResolvedValue(undefined),
+        getChatOwner: jest.fn().mockResolvedValue(null),
+        getAllChats: jest.fn().mockResolvedValue([]),
+      };
+
+      const handlerWithCredits = new StartHandler(
+        mockSendMessage,
+        mockTelegramClient,
+        mockTopicLinkStore,
+        mockMembershipService,
+        mockCreditsStore,
+      );
+
+      const message = makePrivateMessage();
+      await handlerWithCredits.execute(message, []);
+
+      expect(mockCreditsStore.getOrCreateUser).toHaveBeenCalledWith(42);
+      expect(mockSendMessage).toHaveBeenCalledWith(100, WELCOME_MESSAGE);
+    });
+
+    it('should still send welcome message if getOrCreateUser fails', async () => {
+      const mockCreditsStore: jest.Mocked<CreditsStore> = {
+        userExists: jest.fn(),
+        getOrCreateUser: jest.fn().mockRejectedValue(new Error('DynamoDB error')),
+        consumeCredit: jest.fn(),
+        getCredits: jest.fn(),
+        setDailyLimit: jest.fn(),
+        setChatOwner: jest.fn(),
+        getChatOwner: jest.fn(),
+        getAllChats: jest.fn(),
+      };
+
+      const handlerWithCredits = new StartHandler(
+        mockSendMessage,
+        mockTelegramClient,
+        mockTopicLinkStore,
+        mockMembershipService,
+        mockCreditsStore,
+      );
+
+      const message = makePrivateMessage();
+      await handlerWithCredits.execute(message, []);
+
+      expect(mockSendMessage).toHaveBeenCalledWith(100, WELCOME_MESSAGE);
+    });
+
+    it('should not call getOrCreateUser in group chat', async () => {
+      const mockCreditsStore: jest.Mocked<CreditsStore> = {
+        userExists: jest.fn(),
+        getOrCreateUser: jest.fn(),
+        consumeCredit: jest.fn(),
+        getCredits: jest.fn(),
+        setDailyLimit: jest.fn(),
+        setChatOwner: jest.fn(),
+        getChatOwner: jest.fn(),
+        getAllChats: jest.fn(),
+      };
+
+      const handlerWithCredits = new StartHandler(
+        mockSendMessage,
+        mockTelegramClient,
+        mockTopicLinkStore,
+        mockMembershipService,
+        mockCreditsStore,
+      );
+
+      const message = makeGroupMessage();
+      await handlerWithCredits.execute(message, []);
+
+      expect(mockCreditsStore.getOrCreateUser).not.toHaveBeenCalled();
+    });
   });
 
   describe('deep link: /start link_<chatId>', () => {

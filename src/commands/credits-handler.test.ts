@@ -5,7 +5,7 @@
  */
 
 import { CreditsHandler } from './credits-handler';
-import { CreditsStore, UserCredits, ChatOwnership } from '../store/credits-store';
+import { CreditsStore, UserCredits } from '../store/credits-store';
 import { Message } from '../types';
 
 describe('CreditsHandler', () => {
@@ -25,6 +25,7 @@ describe('CreditsHandler', () => {
   beforeEach(() => {
     mockSendMessage = jest.fn().mockResolvedValue(undefined);
     mockCreditsStore = {
+      userExists: jest.fn().mockResolvedValue(true),
       getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
       consumeCredit: jest.fn().mockResolvedValue(true),
       getCredits: jest.fn().mockResolvedValue(defaultCredits),
@@ -51,24 +52,7 @@ describe('CreditsHandler', () => {
     expect(mockSendMessage).toHaveBeenCalledWith(100, 'Credits: 7/10 remaining today');
   });
 
-  it('should show chat owner credits in group chat', async () => {
-    const ownership: ChatOwnership = {
-      chatId: -200,
-      ownerUserId: 500,
-      addedAt: 1700000000000,
-    };
-    mockCreditsStore.getChatOwner.mockResolvedValueOnce(ownership);
-
-    const ownerCredits: UserCredits = {
-      userId: 500,
-      dailyLimit: 20,
-      creditsUsedToday: 5,
-      lastResetDate: '2026-03-06',
-      isPaid: true,
-      createdAt: 1700000000000,
-    };
-    mockCreditsStore.getCredits.mockResolvedValueOnce(ownerCredits);
-
+  it('should show sender credits in group chat', async () => {
     const message: Message = {
       message_id: 1,
       chat: { id: -200, type: 'group' },
@@ -79,25 +63,9 @@ describe('CreditsHandler', () => {
 
     await handler.execute(message, []);
 
-    expect(mockCreditsStore.getChatOwner).toHaveBeenCalledWith(-200);
-    expect(mockCreditsStore.getCredits).toHaveBeenCalledWith(500);
-    expect(mockSendMessage).toHaveBeenCalledWith(-200, 'Credits: 15/20 remaining today');
-  });
-
-  it('should fall back to sender in group chat without owner', async () => {
-    mockCreditsStore.getChatOwner.mockResolvedValueOnce(null);
-
-    const message: Message = {
-      message_id: 1,
-      chat: { id: -200, type: 'group' },
-      from: { id: 100, first_name: 'John' },
-      date: Math.floor(Date.now() / 1000),
-      text: '/credits',
-    };
-
-    await handler.execute(message, []);
-
+    expect(mockCreditsStore.getChatOwner).not.toHaveBeenCalled();
     expect(mockCreditsStore.getCredits).toHaveBeenCalledWith(100);
+    expect(mockSendMessage).toHaveBeenCalledWith(-200, 'Credits: 7/10 remaining today');
   });
 
   it('should handle message without from field', async () => {
