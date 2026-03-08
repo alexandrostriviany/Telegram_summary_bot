@@ -162,12 +162,11 @@ async function registerBotCommands(telegramClient: TelegramClient): Promise<void
       { type: 'all_private_chats' }
     );
 
-    // Register commands for group chats
+    // Register commands for group chats — minimal
     await telegramClient.setMyCommands(
       [
         { command: 'summary', description: 'Summarize recent messages' },
-        { command: 'credits', description: 'Show remaining credits' },
-        { command: 'help', description: 'Show help and usage info' },
+        { command: 'start', description: 'Get private summaries in DM' },
       ],
       { type: 'all_group_chats' }
     );
@@ -778,7 +777,6 @@ export async function handler(
         },
         creditsStore,
         { topicLinkStore, membershipService, telegramClient },
-        cachedBotUser?.username
       );
       commandRouter.register('summary', summaryHandler);
     } else {
