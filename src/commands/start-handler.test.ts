@@ -123,10 +123,16 @@ describe('StartHandler', () => {
       const message = makePrivateMessage();
       await handler.execute(message, []);
 
-      expect(mockTelegramClient.sendWithReplyKeyboard).toHaveBeenCalledWith(
+      expect(mockTelegramClient.sendInlineKeyboard).toHaveBeenCalledWith(
         100,
         WELCOME_MESSAGE,
-        START_REPLY_KEYBOARD,
+        expect.objectContaining({
+          inline_keyboard: expect.arrayContaining([
+            expect.arrayContaining([
+              expect.objectContaining({ text: '🔗 Link Group', callback_data: 'menu:link' }),
+            ]),
+          ]),
+        }),
       );
     });
 

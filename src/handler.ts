@@ -489,7 +489,8 @@ export async function handleCallbackQuery(
   callbackQuery: CallbackQuery,
   telegramClient: TelegramClient,
   topicLinkStore: TopicLinkStore,
-  unlinkHandler: ReturnType<typeof createUnlinkHandler>
+  unlinkHandler: ReturnType<typeof createUnlinkHandler>,
+  commandRouter?: CommandRouter
 ): Promise<void> {
   const { id: callbackQueryId, from, message, data } = callbackQuery;
 
@@ -529,6 +530,18 @@ export async function handleCallbackQuery(
     } else if (data.startsWith(UNLINK_CANCEL_PREFIX)) {
       // Unlink cancel callback
       await unlinkHandler.handleCancel(callbackQueryId);
+    } else if (data.startsWith('menu:') && commandRouter) {
+      // Menu button callback: route to the corresponding command handler
+      const commandName = data.slice('menu:'.length);
+      const fakeMessage: Message = {
+        message_id: message?.message_id ?? 0,
+        chat: message?.chat ?? { id: privateChatId, type: 'private' as const },
+        from,
+        date: Math.floor(Date.now() / 1000),
+        text: `/${commandName}`,
+      };
+      await commandRouter.route(fakeMessage);
+      await telegramClient.answerCallbackQuery(callbackQueryId);
     } else {
       await telegramClient.answerCallbackQuery(callbackQueryId, 'Unknown action.');
     }
@@ -663,22 +676,8 @@ export async function handler(
       fetchBotUser(telegramClient),
     ]);
 
-    // Handle callback queries (inline keyboard button presses) before message routing
-    if (update.callback_query) {
-      // Create unlink handler for callback routing (sendMsg for General topic — no threadId)
-      const generalSendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
-      const unlinkHandler = createUnlinkHandler(generalSendMsg, topicLinkStore, telegramClient);
-
-      await handleCallbackQuery(update.callback_query, telegramClient, topicLinkStore, unlinkHandler);
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ ok: true }),
-      };
-    }
-
     // Bind the forum topic threadId so all responses go to the correct topic
-    const threadId = update.message?.message_thread_id;
+    const threadId = update.message?.message_thread_id ?? update.callback_query?.message?.message_thread_id;
     const sendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
     // Create command router with Telegram client's sendMessage method
@@ -781,6 +780,18 @@ export async function handler(
       commandRouter.register('summary', summaryHandler);
     } else {
       console.warn('AI provider not configured - /summary command will not be available');
+    }
+
+    // Handle callback queries (inline keyboard button presses)
+    if (update.callback_query) {
+      const generalSendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
+      const unlinkHandler = createUnlinkHandler(generalSendMsg, topicLinkStore, telegramClient);
+      await handleCallbackQuery(update.callback_query, telegramClient, topicLinkStore, unlinkHandler, commandRouter);
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ ok: true }),
+      };
     }
 
     // Process the webhook update

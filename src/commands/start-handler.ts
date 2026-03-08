@@ -76,11 +76,24 @@ export class StartHandler implements CommandHandler {
       return;
     }
 
-    // Private chat onboarding: welcome + reply keyboard
-    await this.telegramClient.sendWithReplyKeyboard(
+    // Private chat onboarding: welcome + inline action buttons
+    // Note: ReplyKeyboardMarkup doesn't work in forum-enabled private chats,
+    // so we use inline keyboard buttons instead
+    await this.telegramClient.sendInlineKeyboard(
       chatId,
       WELCOME_MESSAGE,
-      START_REPLY_KEYBOARD,
+      {
+        inline_keyboard: [
+          [
+            { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
+            { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
+          ],
+          [
+            { text: '\u{1F4CA} Credits', callback_data: 'menu:credits' },
+            { text: '\u2753 Help', callback_data: 'menu:help' },
+          ],
+        ],
+      },
     );
   }
 
