@@ -609,6 +609,7 @@ describe('SummaryHandler private topic flow', () => {
     mockTelegramClient = {
       sendMessage: jest.fn().mockResolvedValue(undefined),
       createForumTopic: jest.fn(),
+      editForumTopic: jest.fn().mockResolvedValue(undefined),
       deleteForumTopic: jest.fn().mockResolvedValue(undefined),
       closeForumTopic: jest.fn().mockResolvedValue(undefined),
       reopenForumTopic: jest.fn().mockResolvedValue(undefined),

@@ -13,6 +13,7 @@ function createMockTelegramClient(): jest.Mocked<TelegramClient> {
   return {
     sendMessage: jest.fn(),
     createForumTopic: jest.fn(),
+    editForumTopic: jest.fn(),
     deleteForumTopic: jest.fn(),
     closeForumTopic: jest.fn(),
     reopenForumTopic: jest.fn(),

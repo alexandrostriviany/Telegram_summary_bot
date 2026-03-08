@@ -248,7 +248,7 @@ export class NotGroupMemberError extends BotError {
 export class TopicNotLinkedError extends BotError {
   constructor() {
     super(
-      'This topic is not linked to any group. Use /link in the General topic to set one up.',
+      'This topic is not linked to any group. Use /link here to link it to a group first.',
       ErrorCode.TOPIC_NOT_LINKED,
     );
     this.name = 'TopicNotLinkedError';
@@ -310,7 +310,7 @@ const USER_FRIENDLY_MESSAGES: Record<ErrorCode, string> = {
   [ErrorCode.CREDITS_EXHAUSTED]: 'Daily summary credits have been used up. Credits reset at midnight UTC.',
   [ErrorCode.UNAUTHORIZED]: 'You are not authorized to perform this action.',
   [ErrorCode.NOT_GROUP_MEMBER]: 'You are no longer a member of this group. Summary access has been revoked.',
-  [ErrorCode.TOPIC_NOT_LINKED]: 'This topic is not linked to any group. Use /link in the General topic to set one up.',
+  [ErrorCode.TOPIC_NOT_LINKED]: 'This topic is not linked to any group. Use /link here to link it to a group first.',
   [ErrorCode.BOT_NOT_IN_GROUP]: "I'm no longer a member of this group. I can't generate summaries for groups I'm not in.",
   [ErrorCode.GROUP_ALREADY_LINKED]: 'This group is already linked to a topic.',
   [ErrorCode.UNKNOWN_ERROR]: 'Something went wrong. Please try again.',

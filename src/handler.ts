@@ -458,6 +458,14 @@ export async function handleWebhook(
   if (isBotAddedEvent(message)) {
     // Bot was added to a group - send welcome message and record ownership
     await handleBotAdded(message, telegramClient, creditsStore);
+  } else if (message.forum_topic_created && message.chat.type === 'private' && message.message_thread_id) {
+    // User created a new topic in the private chat — suggest linking it to a group
+    const threadId = message.message_thread_id;
+    await telegramClient.sendMessage(
+      message.chat.id,
+      'Use /link to connect this topic to a group chat and get private summaries here.',
+      threadId,
+    );
   } else if (isCommand(message)) {
     // Handle bot commands using the command router
     await handleCommand(message, commandRouter);

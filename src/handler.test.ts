@@ -42,6 +42,7 @@ const mockMessageStore: jest.Mocked<MessageStore> = {
 const mockTelegramClient: jest.Mocked<TelegramClient> = {
   sendMessage: jest.fn().mockResolvedValue(undefined),
   createForumTopic: jest.fn().mockResolvedValue({ message_thread_id: 1, name: 'test', icon_color: 0 }),
+  editForumTopic: jest.fn().mockResolvedValue(undefined),
   deleteForumTopic: jest.fn().mockResolvedValue(undefined),
   closeForumTopic: jest.fn().mockResolvedValue(undefined),
   reopenForumTopic: jest.fn().mockResolvedValue(undefined),

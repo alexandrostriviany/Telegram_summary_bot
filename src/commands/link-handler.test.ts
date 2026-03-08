@@ -22,6 +22,7 @@ function createMockTelegramClient(): jest.Mocked<TelegramClient> {
   return {
     sendMessage: jest.fn().mockResolvedValue(undefined),
     createForumTopic: jest.fn(),
+    editForumTopic: jest.fn().mockResolvedValue(undefined),
     deleteForumTopic: jest.fn(),
     closeForumTopic: jest.fn(),
     reopenForumTopic: jest.fn(),
@@ -91,13 +92,14 @@ describe('LinkHandler', () => {
     expect(mockStore.getUserLinks).toHaveBeenCalledWith(42);
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
-      'Select a group to link:',
+      'Select a group to link to this topic:',
       {
         inline_keyboard: [
           [{ text: 'Group A', callback_data: 'link:-1001111111111' }],
           [{ text: 'Group B', callback_data: 'link:-1002222222222' }],
         ],
       },
+      undefined,
     );
   });
 
@@ -149,12 +151,13 @@ describe('LinkHandler', () => {
 
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
-      'Select a group to link:',
+      'Select a group to link to this topic:',
       {
         inline_keyboard: [
           [{ text: 'Group A', callback_data: 'link:-1001111111111' }],
         ],
       },
+      undefined,
     );
   });
 
@@ -189,12 +192,13 @@ describe('LinkHandler', () => {
 
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
-      'Select a group to link:',
+      'Select a group to link to this topic:',
       {
         inline_keyboard: [
           [{ text: 'Group B', callback_data: 'link:-1002222222222' }],
         ],
       },
+      undefined,
     );
   });
 

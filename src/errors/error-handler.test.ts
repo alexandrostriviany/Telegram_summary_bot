@@ -167,7 +167,7 @@ describe('Custom Error Classes', () => {
       const error = new TopicNotLinkedError();
 
       expect(error.name).toBe('TopicNotLinkedError');
-      expect(error.message).toBe('This topic is not linked to any group. Use /link in the General topic to set one up.');
+      expect(error.message).toBe('This topic is not linked to any group. Use /link here to link it to a group first.');
       expect(error.errorCode).toBe(ErrorCode.TOPIC_NOT_LINKED);
       expect(error).toBeInstanceOf(BotError);
     });
@@ -327,7 +327,7 @@ describe('getUserFriendlyMessage', () => {
   it('should return correct message for TOPIC_NOT_LINKED', () => {
     const message = getUserFriendlyMessage(ErrorCode.TOPIC_NOT_LINKED);
 
-    expect(message).toBe('This topic is not linked to any group. Use /link in the General topic to set one up.');
+    expect(message).toBe('This topic is not linked to any group. Use /link here to link it to a group first.');
   });
 
   it('should return correct message for BOT_NOT_IN_GROUP', () => {

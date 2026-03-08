@@ -46,6 +46,15 @@ export interface TelegramClient {
   createForumTopic(chatId: number, name: string, iconColor?: number): Promise<ForumTopic>;
 
   /**
+   * Edit a forum topic name
+   *
+   * @param chatId - The chat ID
+   * @param threadId - Unique identifier of the target forum topic
+   * @param name - New topic name
+   */
+  editForumTopic(chatId: number, threadId: number, name: string): Promise<void>;
+
+  /**
    * Delete a forum topic in a supergroup chat
    *
    * @param chatId - The supergroup chat ID
@@ -268,6 +277,11 @@ export class TelegramBotClient implements TelegramClient {
       params.icon_color = iconColor;
     }
     return this.callApi<ForumTopic>('createForumTopic', params);
+  }
+
+  async editForumTopic(chatId: number, threadId: number, name: string): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/editForumTopic`;
+    await this.makeApiCall(url, { chat_id: chatId, message_thread_id: threadId, name });
   }
 
   async deleteForumTopic(chatId: number, threadId: number): Promise<void> {

@@ -75,6 +75,15 @@ export interface Message {
    * Present when the message belongs to a topic in a forum-enabled chat.
    */
   is_topic_message?: boolean;
+  /**
+   * Service message: forum topic created.
+   * Present when a new forum topic is created in the chat.
+   */
+  forum_topic_created?: {
+    name: string;
+    icon_color: number;
+    icon_custom_emoji_id?: string;
+  };
 }
 
 /**

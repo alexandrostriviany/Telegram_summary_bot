@@ -108,15 +108,21 @@ export class LinkHandler implements CommandHandler {
     }
 
     // Build inline keyboard with one button per group
+    // If /link is called inside a topic, include the topicThreadId in callback_data
+    // so the callback handler links that existing topic instead of creating a new one
+    const topicThreadId = message.message_thread_id;
     const buttons = unlinkableGroups.map(group => ([{
       text: group.title,
-      callback_data: `${LINK_CALLBACK_PREFIX}${group.chatId}`,
+      callback_data: topicThreadId
+        ? `${LINK_CALLBACK_PREFIX}${group.chatId}:${topicThreadId}`
+        : `${LINK_CALLBACK_PREFIX}${group.chatId}`,
     }]));
 
     await this.telegramClient.sendInlineKeyboard(
       chatId,
-      'Select a group to link:',
+      'Select a group to link to this topic:',
       { inline_keyboard: buttons },
+      topicThreadId,
     );
   }
 }
@@ -145,7 +151,11 @@ export async function handleLinkCallback(
     return;
   }
 
-  const groupChatId = parseInt(callbackData.slice(LINK_CALLBACK_PREFIX.length), 10);
+  // Parse callback data: "link:<groupChatId>" or "link:<groupChatId>:<existingTopicThreadId>"
+  const parts = callbackData.slice(LINK_CALLBACK_PREFIX.length).split(':');
+  const groupChatId = parseInt(parts[0], 10);
+  const existingTopicThreadId = parts[1] ? parseInt(parts[1], 10) : undefined;
+
   if (isNaN(groupChatId)) {
     await telegramClient.answerCallbackQuery(callbackQueryId, 'Invalid group.');
     return;
@@ -168,13 +178,25 @@ export async function handleLinkCallback(
   }
 
   let topicThreadId: number;
-  try {
-    const forumTopic = await telegramClient.createForumTopic(privateChatId, groupTitle);
-    topicThreadId = forumTopic.message_thread_id;
-  } catch (error) {
-    console.error('Failed to create forum topic:', error);
-    await telegramClient.answerCallbackQuery(callbackQueryId, 'Failed to create topic. Please try again.');
-    return;
+  if (existingTopicThreadId && !isNaN(existingTopicThreadId)) {
+    // /link was called inside an existing topic — use that topic
+    topicThreadId = existingTopicThreadId;
+    // Rename the topic to match the group title
+    try {
+      await telegramClient.editForumTopic(privateChatId, topicThreadId, groupTitle);
+    } catch {
+      // Renaming is best-effort — continue even if it fails
+    }
+  } else {
+    // /link from General topic — create a new topic
+    try {
+      const forumTopic = await telegramClient.createForumTopic(privateChatId, groupTitle);
+      topicThreadId = forumTopic.message_thread_id;
+    } catch (error) {
+      console.error('Failed to create forum topic:', error);
+      await telegramClient.answerCallbackQuery(callbackQueryId, 'Failed to create topic. Please try again.');
+      return;
+    }
   }
 
   // Store the link
