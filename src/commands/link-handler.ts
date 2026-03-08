@@ -206,14 +206,15 @@ export async function handleLinkCallback(
 
   await topicLinkStore.createLink(link);
 
-  // Send confirmation in the new topic
+  // Send confirmation in the topic
+  const relinked = existingLink ? ' (re-linked from previous topic)' : '';
   await telegramClient.sendMessage(
     privateChatId,
-    `Linked to <b>${groupTitle}</b>. Summaries for this group will appear here.`,
+    `Linked to <b>${groupTitle}</b>${relinked}. Use /summary here to get private summaries.`,
     topicThreadId,
   );
 
-  await telegramClient.answerCallbackQuery(callbackQueryId, 'Group linked!');
+  await telegramClient.answerCallbackQuery(callbackQueryId, existingLink ? 'Group re-linked!' : 'Group linked!');
 }
 
 /**
