@@ -97,10 +97,24 @@ export class LinkHandler implements CommandHandler {
       return;
     }
 
-    // Filter out already-linked groups
+    // Filter out already-linked groups, but clean up stale links (topic was deleted manually)
     const existingLinks = await this.topicLinkStore.getUserLinks(userId);
-    const linkedGroupIds = new Set(existingLinks.map(link => link.groupChatId));
-    const unlinkableGroups = verifiedGroups.filter(g => !linkedGroupIds.has(g.chatId));
+    const validLinkedGroupIds = new Set<number>();
+
+    for (const link of existingLinks) {
+      if (link.status === 'closed') continue; // Closed links don't block re-linking
+      try {
+        // Probe the topic with a no-op rename — if topic was deleted, this throws
+        await this.telegramClient.editForumTopic(chatId, link.topicThreadId, link.groupTitle);
+        validLinkedGroupIds.add(link.groupChatId);
+      } catch {
+        // Topic no longer exists — clean up the stale link
+        console.log(`Cleaning up stale link: userId=${userId} topic=${link.topicThreadId} group=${link.groupChatId}`);
+        await this.topicLinkStore.deleteLink(userId, link.topicThreadId);
+      }
+    }
+
+    const unlinkableGroups = verifiedGroups.filter(g => !validLinkedGroupIds.has(g.chatId));
 
     if (unlinkableGroups.length === 0) {
       await this.telegramClient.sendMessage(chatId, ALL_LINKED_MESSAGE);
