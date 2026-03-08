@@ -1,0 +1,31 @@
+name: Tail Logs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Get Lambda function name
+        id: fn
+        run: |
+          FN=$(aws cloudformation describe-stacks --stack-name telegram-summary-bot \
+            --query 'Stacks[0].Outputs[?OutputKey==`FunctionName`].OutputValue' --output text)
+          echo "name=$FN" >> "$GITHUB_OUTPUT"
+
+      - name: Tail recent logs
+        run: |
+          aws logs filter-log-events \
+            --log-group-name "/aws/lambda/${{ steps.fn.outputs.name }}" \
+            --start-time $(( $(date +%s) * 1000 - 300000 )) \
+            --interleaved \
+            --query 'events[*].message' \
+            --output text | tail -200
