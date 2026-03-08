@@ -89,7 +89,6 @@ describe('LinkHandler', () => {
 
     expect(mockGetCandidates).toHaveBeenCalledWith(42);
     expect(mockMembership.isGroupMember).toHaveBeenCalledTimes(2);
-    expect(mockStore.getUserLinks).toHaveBeenCalledWith(42);
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
       'Select a group to link to this topic:',
@@ -174,7 +173,7 @@ describe('LinkHandler', () => {
     );
   });
 
-  it('should filter out already-linked groups', async () => {
+  it('should show all groups including already-linked ones', async () => {
     const existingLink: TopicLink = {
       userId: 42,
       topicThreadId: 10,
@@ -190,11 +189,13 @@ describe('LinkHandler', () => {
 
     await handler.execute(message, []);
 
+    // Both groups shown — re-linking is allowed
     expect(mockClient.sendInlineKeyboard).toHaveBeenCalledWith(
       100,
       'Select a group to link to this topic:',
       {
         inline_keyboard: [
+          [{ text: 'Group A', callback_data: 'link:-1001111111111' }],
           [{ text: 'Group B', callback_data: 'link:-1002222222222' }],
         ],
       },
@@ -202,7 +203,7 @@ describe('LinkHandler', () => {
     );
   });
 
-  it('should show all-linked message when every group is linked', async () => {
+  it('should still show groups even if all are already linked (allows re-linking)', async () => {
     const links: TopicLink[] = candidateGroups.map((g, i) => ({
       userId: 42,
       topicThreadId: 10 + i,
@@ -218,11 +219,8 @@ describe('LinkHandler', () => {
 
     await handler.execute(message, []);
 
-    expect(mockClient.sendMessage).toHaveBeenCalledWith(
-      100,
-      expect.stringContaining('already linked'),
-    );
-    expect(mockClient.sendInlineKeyboard).not.toHaveBeenCalled();
+    // All groups should still be shown — re-linking is allowed
+    expect(mockClient.sendInlineKeyboard).toHaveBeenCalled();
   });
 });
 
@@ -285,7 +283,7 @@ describe('handleLinkCallback', () => {
     expect(mockClient.createForumTopic).not.toHaveBeenCalled();
   });
 
-  it('should reject already-linked group', async () => {
+  it('should re-link when group was previously linked (e.g. topic deleted)', async () => {
     mockStore.getLinkByGroup.mockResolvedValueOnce({
       userId: 42,
       topicThreadId: 10,
@@ -295,11 +293,27 @@ describe('handleLinkCallback', () => {
       linkedAt: Date.now(),
       status: 'active',
     });
+    mockClient.getChat.mockResolvedValueOnce({ id: -1001111111111, type: 'supergroup', title: 'Re-linked Group' });
+    mockClient.createForumTopic.mockResolvedValueOnce({
+      message_thread_id: 55,
+      name: 'Re-linked Group',
+      icon_color: 0,
+    });
 
     await handleLinkCallback('cb-123', 'link:-1001111111111', 42, 100, mockClient, mockStore);
 
-    expect(mockClient.answerCallbackQuery).toHaveBeenCalledWith('cb-123', 'This group is already linked.');
-    expect(mockClient.createForumTopic).not.toHaveBeenCalled();
+    // Old link should be deleted
+    expect(mockStore.deleteLink).toHaveBeenCalledWith(42, 10);
+    // New topic and link should be created
+    expect(mockClient.createForumTopic).toHaveBeenCalledWith(100, 'Re-linked Group');
+    expect(mockStore.createLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 42,
+        topicThreadId: 55,
+        groupChatId: -1001111111111,
+      }),
+    );
+    expect(mockClient.answerCallbackQuery).toHaveBeenCalledWith('cb-123', 'Group linked!');
   });
 
   it('should handle createForumTopic failure', async () => {

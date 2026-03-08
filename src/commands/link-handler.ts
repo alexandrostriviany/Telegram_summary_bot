@@ -34,11 +34,6 @@ const LINK_CALLBACK_PREFIX = 'link:';
 const NO_GROUPS_MESSAGE = 'No groups available to link. Make sure the bot is added to a group where you are also a member.';
 
 /**
- * Message shown when all groups are already linked
- */
-const ALL_LINKED_MESSAGE = 'All your groups are already linked. Use /groups to see your linked groups.';
-
-/**
  * Message shown when /link is used outside a private chat
  */
 const PRIVATE_ONLY_MESSAGE = 'The /link command can only be used in a private chat with the bot.';
@@ -57,7 +52,7 @@ export type GetCandidateGroups = (userId: number) => Promise<CandidateGroup[]>;
 export class LinkHandler implements CommandHandler {
   constructor(
     private readonly telegramClient: TelegramClient,
-    private readonly topicLinkStore: TopicLinkStore,
+    _topicLinkStore: TopicLinkStore,
     private readonly membershipService: MembershipService,
     private readonly getCandidateGroups: GetCandidateGroups,
   ) {}
@@ -97,27 +92,12 @@ export class LinkHandler implements CommandHandler {
       return;
     }
 
-    // Filter out already-linked groups, but clean up stale links (topic was deleted manually)
-    const existingLinks = await this.topicLinkStore.getUserLinks(userId);
-    const validLinkedGroupIds = new Set<number>();
-
-    for (const link of existingLinks) {
-      if (link.status === 'closed') continue; // Closed links don't block re-linking
-      try {
-        // Probe the topic with a no-op rename — if topic was deleted, this throws
-        await this.telegramClient.editForumTopic(chatId, link.topicThreadId, link.groupTitle);
-        validLinkedGroupIds.add(link.groupChatId);
-      } catch {
-        // Topic no longer exists — clean up the stale link
-        console.log(`Cleaning up stale link: userId=${userId} topic=${link.topicThreadId} group=${link.groupChatId}`);
-        await this.topicLinkStore.deleteLink(userId, link.topicThreadId);
-      }
-    }
-
-    const unlinkableGroups = verifiedGroups.filter(g => !validLinkedGroupIds.has(g.chatId));
+    // Show all verified groups — stale links are cleaned up lazily in the callback
+    // when the user selects a group that has a stale link
+    const unlinkableGroups = verifiedGroups;
 
     if (unlinkableGroups.length === 0) {
-      await this.telegramClient.sendMessage(chatId, ALL_LINKED_MESSAGE);
+      await this.telegramClient.sendMessage(chatId, NO_GROUPS_MESSAGE);
       return;
     }
 
@@ -175,11 +155,11 @@ export async function handleLinkCallback(
     return;
   }
 
-  // Check if already linked
+  // If a link already exists for this group, remove it (allows re-linking after topic deletion)
   const existingLink = await topicLinkStore.getLinkByGroup(userId, groupChatId);
   if (existingLink) {
-    await telegramClient.answerCallbackQuery(callbackQueryId, 'This group is already linked.');
-    return;
+    console.log(`Re-linking group ${groupChatId}: removing old link to topic ${existingLink.topicThreadId}`);
+    await topicLinkStore.deleteLink(userId, existingLink.topicThreadId);
   }
 
   // Fetch the real group title via Telegram API
