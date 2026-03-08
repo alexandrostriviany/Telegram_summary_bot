@@ -118,6 +118,8 @@ Resources:
           CHAT_OWNERSHIP_TABLE: !Ref ChatOwnershipTable
           ADMIN_USER_ID: !Ref AdminUserId
           DEFAULT_DAILY_CREDITS: !Ref DefaultDailyCredits
+          TOPIC_LINKS_TABLE: !Ref TopicLinksTable
+          USER_GROUPS_TABLE: !Ref UserGroupMembershipTable
       # IAM policies with least privilege
       # Validates: Requirements 7.2 - Use IAM roles with least-privilege permissions
       Policies:
@@ -127,6 +129,10 @@ Resources:
             TableName: !Ref UserCreditsTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ChatOwnershipTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TopicLinksTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserGroupMembershipTable
         # Bedrock policy (only needed if using Bedrock provider)
         - Version: '2012-10-17'
           Statement:
@@ -241,6 +247,69 @@ Resources:
         - Key: Environment
           Value: !Ref AWS::StackName
 
+  # DynamoDB table for topic-to-group link mappings (private topics feature)
+  TopicLinksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-topic-links'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: N
+        - AttributeName: topicThreadId
+          AttributeType: N
+        - AttributeName: groupChatId
+          AttributeType: N
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: topicThreadId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GroupChatIndex
+          KeySchema:
+            - AttributeName: groupChatId
+              KeyType: HASH
+            - AttributeName: userId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Application
+          Value: TelegramSummaryBot
+        - Key: Environment
+          Value: !Ref AWS::StackName
+
+  # DynamoDB table for tracking user-group membership (private topics feature)
+  UserGroupMembershipTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-user-groups'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: N
+        - AttributeName: groupChatId
+          AttributeType: N
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: groupChatId
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: false
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Application
+          Value: TelegramSummaryBot
+        - Key: Environment
+          Value: !Ref AWS::StackName
+
   # CloudWatch Log Group with retention policy
   # Validates: Cost Optimization - Set log retention to 7 days
   TelegramBotFunctionLogGroup:
@@ -281,6 +350,14 @@ Outputs:
   ChatOwnershipTableName:
     Description: DynamoDB table name for chat ownership
     Value: !Ref ChatOwnershipTable
+
+  TopicLinksTableName:
+    Description: DynamoDB table name for topic-to-group link mappings
+    Value: !Ref TopicLinksTable
+
+  UserGroupMembershipTableName:
+    Description: DynamoDB table name for user-group membership tracking
+    Value: !Ref UserGroupMembershipTable
 
   ApiEndpoint:
     Description: HTTP API endpoint URL

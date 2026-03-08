@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Private Topic-Based Summaries — Feature Architecture Plan</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #181b24;
+    --surface2: #1e222d;
+    --border: #2a2f3e;
+    --text: #e1e4eb;
+    --text-muted: #8b91a3;
+    --accent: #6c8aff;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --orange: #fbbf24;
+    --red: #f87171;
+    --cyan: #22d3ee;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 0;
+  }
+
+  /* Header */
+  .hero {
+    background: linear-gradient(135deg, #1a1d2e 0%, #0f1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 3rem 2rem;
+    text-align: center;
+  }
+  .hero h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+  }
+  .hero .subtitle {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+  }
+  .hero .date {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+    opacity: 0.7;
+  }
+
+  /* Layout */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 2.5rem;
+  }
+  .toc h2 {
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+  .toc ol {
+    list-style: none;
+    counter-reset: toc-counter;
+    columns: 2;
+    column-gap: 2rem;
+  }
+  .toc li {
+    counter-increment: toc-counter;
+    margin-bottom: 0.4rem;
+  }
+  .toc li::before {
+    content: counter(toc-counter, decimal-leading-zero) ".";
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 0.5rem;
+    font-size: 0.85rem;
+  }
+  .toc a {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.95rem;
+    transition: color 0.2s;
+  }
+  .toc a:hover { color: var(--accent); }
+
+  /* Sections */
+  section {
+    margin-bottom: 3rem;
+  }
+  section h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  section h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin: 1.5rem 0 0.75rem;
+  }
+  section h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--cyan);
+    margin: 1rem 0 0.5rem;
+  }
+  p { margin-bottom: 0.75rem; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .card.highlight {
+    border-left: 3px solid var(--accent);
+  }
+  .card.warning {
+    border-left: 3px solid var(--orange);
+    background: rgba(251, 191, 36, 0.05);
+  }
+  .card.danger {
+    border-left: 3px solid var(--red);
+    background: rgba(248, 113, 113, 0.05);
+  }
+  .card.success {
+    border-left: 3px solid var(--green);
+    background: rgba(52, 211, 153, 0.05);
+  }
+  .card-title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Lists */
+  ul, ol {
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+  }
+  li { margin-bottom: 0.3rem; }
+
+  /* Code */
+  code {
+    background: var(--surface2);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: var(--cyan);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-size: 0.85rem;
+    line-height: 1.6;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    color: var(--text);
+  }
+  .kw { color: var(--accent2); }
+  .str { color: var(--green); }
+  .comment { color: var(--text-muted); }
+  .type { color: var(--cyan); }
+  .fn { color: var(--orange); }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+  th, td {
+    padding: 0.6rem 1rem;
+    text-align: left;
+    border: 1px solid var(--border);
+  }
+  th {
+    background: var(--surface2);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  td { background: var(--surface); }
+  tr:hover td { background: var(--surface2); }
+
+  /* Flow diagrams (ASCII-style) */
+  .flow {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text-muted);
+    margin: 1rem 0;
+  }
+  .flow .hl { color: var(--accent); font-weight: bold; }
+  .flow .hl2 { color: var(--green); }
+  .flow .hl3 { color: var(--orange); }
+
+  /* Tags */
+  .tag {
+    display: inline-block;
+    padding: 0.15em 0.6em;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tag-new { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+  .tag-modified { background: rgba(251, 191, 36, 0.15); color: var(--orange); }
+  .tag-critical { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+  .tag-api { background: rgba(108, 138, 255, 0.15); color: var(--accent); }
+
+  /* Phase badges */
+  .phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .phase-num {
+    background: var(--accent);
+    color: var(--bg);
+    border-radius: 50%;
+    width: 1.2rem;
+    height: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+  }
+
+  /* Decision matrix */
+  .decision {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+  }
+  .decision-option {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .decision-option.chosen {
+    border-color: var(--green);
+    background: rgba(52, 211, 153, 0.03);
+  }
+  .decision-option h4 {
+    margin-top: 0;
+  }
+  .pros { color: var(--green); }
+  .cons { color: var(--red); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .toc ol { columns: 1; }
+    .decision { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 1.6rem; }
+  }
+
+  /* Separator */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2rem 0;
+  }
+
+  /* Checklist */
+  .checklist {
+    list-style: none;
+    padding-left: 0;
+  }
+  .checklist li {
+    padding: 0.3rem 0;
+    padding-left: 1.5rem;
+    position: relative;
+  }
+  .checklist li::before {
+    content: "☐";
+    position: absolute;
+    left: 0;
+    color: var(--text-muted);
+  }
+
+  /* File tree */
+  .file-tree {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    line-height: 1.8;
+    color: var(--text-muted);
+  }
+  .file-tree .new { color: var(--green); }
+  .file-tree .mod { color: var(--orange); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Private Topic-Based Group Summaries</h1>
+  <div class="subtitle">Feature Architecture Plan — Telegram Summary Bot</div>
+  <div class="date">March 8, 2026 — Research &amp; Architecture Phase</div>
+</div>
+
+<div class="container">
+
+<!-- TABLE OF CONTENTS -->
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#executive-summary">Executive Summary</a></li>
+    <li><a href="#problem-statement">Problem Statement</a></li>
+    <li><a href="#telegram-api">Telegram Bot API Research</a></li>
+    <li><a href="#architecture-decisions">Architecture Decisions</a></li>
+    <li><a href="#user-flows">User Flows &amp; Commands</a></li>
+    <li><a href="#data-model">Data Model &amp; DynamoDB Schema</a></li>
+    <li><a href="#system-design">System Design &amp; Components</a></li>
+    <li><a href="#security">Security &amp; Access Control</a></li>
+    <li><a href="#credits">Credits &amp; Usage Integration</a></li>
+    <li><a href="#file-changes">File Changes Map</a></li>
+    <li><a href="#implementation-phases">Implementation Phases</a></li>
+    <li><a href="#open-questions">Open Questions &amp; Risks</a></li>
+  </ol>
+</nav>
+
+<!-- 1. EXECUTIVE SUMMARY -->
+<section id="executive-summary">
+  <h2>01. Executive Summary</h2>
+
+  <div class="card highlight">
+    <div class="card-title">Core Idea</div>
+    <p>Enable users to get <strong>private, per-group summaries</strong> delivered into organized topics within their 1-on-1 chat with the bot. Each topic represents one group chat. The user's own credits are consumed. Group members cannot see that someone requested a summary.</p>
+  </div>
+
+  <h3>Key Capabilities</h3>
+  <ul>
+    <li><strong>Private Topics</strong> — Bot creates topics in the private chat, one per linked group</li>
+    <li><strong>Group Discovery</strong> — Bot suggests groups where both the bot and user are members</li>
+    <li><strong>Membership Verification</strong> — Real-time check via <code>getChatMember</code> before every summary</li>
+    <li><strong>Credit Consumption</strong> — The requesting user's credits are consumed (not the group owner's)</li>
+    <li><strong>Full Feature Parity</strong> — All existing parameters work: <code>/summary</code>, <code>/summary 2h</code>, <code>/summary 50</code></li>
+    <li><strong>Streaming Support</strong> — Compatible with Telegram's streaming bot responses in topics</li>
+  </ul>
+</section>
+
+<!-- 2. PROBLEM STATEMENT -->
+<section id="problem-statement">
+  <h2>02. Problem Statement</h2>
+
+  <h3>Current Behavior</h3>
+  <p>Today, <code>/summary</code> is invoked <em>inside</em> a group chat and the summary is posted there. This means:</p>
+  <ul>
+    <li>All group members see the summary request and output</li>
+    <li>Social pressure — members may feel watched or judged for requesting summaries</li>
+    <li>Summaries clutter the group chat</li>
+    <li>Credits are charged to the <em>group owner</em> (who added the bot), not the person requesting</li>
+    <li>No way to organize summaries from different groups</li>
+  </ul>
+
+  <h3>Desired Behavior</h3>
+  <ul>
+    <li>User opens their private chat with the bot</li>
+    <li>Each linked group has its own <strong>topic</strong> (thread) in this private chat</li>
+    <li>User types <code>/summary 2h</code> inside a topic → bot fetches messages from the linked group and delivers the summary into that topic</li>
+    <li>Completely invisible to other group members</li>
+    <li>The requesting user's own credits are consumed</li>
+  </ul>
+</section>
+
+<!-- 3. TELEGRAM API RESEARCH -->
+<section id="telegram-api">
+  <h2>03. Telegram Bot API Research</h2>
+
+  <div class="card success">
+    <div class="card-title">Key Finding: Private Chat Topics (Bot API 9.4+)</div>
+    <p>As of Bot API 9.4 (February 2026), bots can <strong>create and manage forum topics in private chats</strong>.
+    This is enabled via BotFather settings. The bot gets a <code>has_topics_enabled</code> flag, and users see a topic-based
+    interface in their private chat with the bot.</p>
+  </div>
+
+  <h3>Required API Methods</h3>
+  <table>
+    <tr>
+      <th>Method</th>
+      <th>Purpose</th>
+      <th>Key Parameters</th>
+    </tr>
+    <tr>
+      <td><code>createForumTopic</code></td>
+      <td>Create a topic in the private chat for a linked group</td>
+      <td><code>chat_id</code>, <code>name</code>, <code>icon_color</code>, <code>icon_custom_emoji_id</code></td>
+    </tr>
+    <tr>
+      <td><code>editForumTopic</code></td>
+      <td>Rename topic if group name changes</td>
+      <td><code>chat_id</code>, <code>message_thread_id</code>, <code>name</code></td>
+    </tr>
+    <tr>
+      <td><code>deleteForumTopic</code></td>
+      <td>Remove topic when user unlinks a group</td>
+      <td><code>chat_id</code>, <code>message_thread_id</code></td>
+    </tr>
+    <tr>
+      <td><code>closeForumTopic</code></td>
+      <td>Close topic when user leaves group</td>
+      <td><code>chat_id</code>, <code>message_thread_id</code></td>
+    </tr>
+    <tr>
+      <td><code>getChatMember</code></td>
+      <td>Verify user is still a member of the linked group</td>
+      <td><code>chat_id</code>, <code>user_id</code></td>
+    </tr>
+    <tr>
+      <td><code>sendMessage</code></td>
+      <td>Send summary to the specific topic</td>
+      <td><code>chat_id</code>, <code>text</code>, <code>message_thread_id</code></td>
+    </tr>
+  </table>
+
+  <h3>BotFather Configuration Required</h3>
+  <div class="card warning">
+    <div class="card-title">One-time Setup in BotFather</div>
+    <p>The bot must be configured in BotFather with two critical settings:</p>
+    <ol>
+      <li>Open <code>@BotFather</code> → <code>/mybots</code> → select your bot</li>
+      <li>Go to <strong>Bot Settings</strong> → <strong>Topics in Private Chats</strong> → Enable</li>
+      <li>Go to <strong>Bot Settings</strong> → <strong>Group Privacy</strong> → Disable privacy mode (required so the bot can read all group messages, not just commands addressed to it)</li>
+    </ol>
+    <p>Once topics are enabled, all new private chats with the bot will support topics. Existing chats may need the user to restart the conversation.</p>
+    <p><strong>Note:</strong> If the bot is an <em>admin</em> in a group, it receives all messages regardless of privacy mode. But privacy mode must be OFF for groups where the bot is a regular member.</p>
+  </div>
+
+  <h3>Webhook Update Structure (Private Chat with Topics)</h3>
+  <pre><code>{
+  <span class="str">"update_id"</span>: 123456789,
+  <span class="str">"message"</span>: {
+    <span class="str">"message_id"</span>: 42,
+    <span class="str">"message_thread_id"</span>: 7,       <span class="comment">// ← topic thread ID</span>
+    <span class="str">"is_topic_message"</span>: <span class="kw">true</span>,      <span class="comment">// ← confirms it's in a topic</span>
+    <span class="str">"from"</span>: { <span class="str">"id"</span>: 123, <span class="str">"first_name"</span>: <span class="str">"User"</span> },
+    <span class="str">"chat"</span>: { <span class="str">"id"</span>: 123, <span class="str">"type"</span>: <span class="str">"private"</span> },
+    <span class="str">"date"</span>: 1234567890,
+    <span class="str">"text"</span>: <span class="str">"/summary 2h"</span>
+  }
+}</code></pre>
+  <p>The <code>message_thread_id</code> field is the key for looking up the linked group in <code>TopicLinksTable</code>.</p>
+
+  <h3>getChatMember Response Statuses</h3>
+  <table>
+    <tr>
+      <th>Status</th>
+      <th>Meaning</th>
+      <th>Allow Summary?</th>
+    </tr>
+    <tr>
+      <td><code>creator</code></td>
+      <td>User is the group creator</td>
+      <td style="color: var(--green);">Yes</td>
+    </tr>
+    <tr>
+      <td><code>administrator</code></td>
+      <td>User is a group admin</td>
+      <td style="color: var(--green);">Yes</td>
+    </tr>
+    <tr>
+      <td><code>member</code></td>
+      <td>Regular member</td>
+      <td style="color: var(--green);">Yes</td>
+    </tr>
+    <tr>
+      <td><code>restricted</code></td>
+      <td>Restricted but still in group</td>
+      <td style="color: var(--green);">Yes (with <code>is_member: true</code>)</td>
+    </tr>
+    <tr>
+      <td><code>left</code></td>
+      <td>User has left the group</td>
+      <td style="color: var(--red);">No</td>
+    </tr>
+    <tr>
+      <td><code>kicked</code></td>
+      <td>User was banned from the group</td>
+      <td style="color: var(--red);">No</td>
+    </tr>
+  </table>
+
+  <div class="card warning">
+    <div class="card-title">Important: Bot Must Be in the Group</div>
+    <p>The <code>getChatMember</code> API call requires the <strong>bot itself to be a member of the target group</strong>.
+    The bot cannot verify membership in groups it is not part of. This is consistent with the existing design —
+    the bot is already in the groups and collecting messages.</p>
+  </div>
+</section>
+
+<!-- 4. ARCHITECTURE DECISIONS -->
+<section id="architecture-decisions">
+  <h2>04. Architecture Decisions</h2>
+
+  <h3>Decision 1: Where Do Topics Live?</h3>
+  <div class="decision">
+    <div class="decision-option chosen">
+      <h4 style="color: var(--green);">Chosen: Private Chat with Topics</h4>
+      <p>Enable forum mode in the bot's private chat. Each user gets topics directly in their 1-on-1 chat.</p>
+      <p class="pros">+ Native Telegram UX, clean topic navigation</p>
+      <p class="pros">+ Built-in Telegram streaming support per topic</p>
+      <p class="pros">+ No extra groups to manage</p>
+      <p class="pros">+ Supported since Bot API 9.4</p>
+      <p class="cons">- Requires BotFather configuration</p>
+      <p class="cons">- Older Telegram clients may not support it</p>
+    </div>
+    <div class="decision-option">
+      <h4>Alternative: Bot-Created Supergroup</h4>
+      <p>Bot creates a private supergroup per user with forum topics enabled.</p>
+      <p class="pros">+ Works on older API versions</p>
+      <p class="cons">- Bots cannot create supergroups via API</p>
+      <p class="cons">- Requires user to manually create the group</p>
+      <p class="cons">- Confusing UX with extra groups</p>
+    </div>
+  </div>
+
+  <h3>Decision 2: Group Discovery &amp; Linking</h3>
+  <div class="decision">
+    <div class="decision-option chosen">
+      <h4 style="color: var(--green);">Chosen: Bot Suggests Known Groups</h4>
+      <p>Bot queries its own database for groups where both the bot and user are known members, then presents them as inline keyboard buttons.</p>
+      <p class="pros">+ No manual input required from user</p>
+      <p class="pros">+ Bot only shows groups it actually has messages from</p>
+      <p class="pros">+ Clean inline keyboard UX</p>
+      <p class="cons">- Limited to groups where bot has seen the user's messages</p>
+    </div>
+    <div class="decision-option">
+      <h4>Alternative: User Provides Group ID/Link</h4>
+      <p>User manually types a group link or forwards a message.</p>
+      <p class="pros">+ Works for any group</p>
+      <p class="cons">- Poor UX, error-prone</p>
+      <p class="cons">- User needs to know group ID</p>
+    </div>
+  </div>
+
+  <h3>Decision 3: Credit Model for Private Summaries</h3>
+  <div class="decision">
+    <div class="decision-option chosen">
+      <h4 style="color: var(--green);">Chosen: Requesting User Pays</h4>
+      <p>When a user requests a summary from their private chat, their <strong>own</strong> credits are consumed, regardless of who owns the group.</p>
+      <p class="pros">+ Fair — each user controls their own usage</p>
+      <p class="pros">+ Group owners aren't drained by others</p>
+      <p class="pros">+ Simple to implement — <code>message.from.id</code> is always the credit owner</p>
+    </div>
+    <div class="decision-option">
+      <h4>Alternative: Group Owner Pays</h4>
+      <p>Credits charged to whoever added the bot to the group (current behavior).</p>
+      <p class="cons">- Unfair for group owners when others use private summaries</p>
+      <p class="cons">- Users could drain someone else's credits</p>
+    </div>
+  </div>
+
+  <h3>Decision 4: Membership Verification Timing</h3>
+  <div class="decision">
+    <div class="decision-option chosen">
+      <h4 style="color: var(--green);">Chosen: Verify on Every Summary Request</h4>
+      <p>Call <code>getChatMember</code> before generating each summary to ensure the user is still in the group.</p>
+      <p class="pros">+ Always up-to-date</p>
+      <p class="pros">+ No stale membership data</p>
+      <p class="pros">+ Simple implementation</p>
+      <p class="cons">- One extra API call per summary request (~50ms)</p>
+    </div>
+    <div class="decision-option">
+      <h4>Alternative: Cache Membership with TTL</h4>
+      <p>Cache membership status and refresh periodically.</p>
+      <p class="pros">+ Fewer API calls</p>
+      <p class="cons">- Stale data could allow unauthorized access</p>
+      <p class="cons">- Adds caching complexity in Lambda</p>
+    </div>
+  </div>
+</section>
+
+<!-- 5. USER FLOWS -->
+<section id="user-flows">
+  <h2>05. User Flows &amp; Commands</h2>
+
+  <h3>New Commands</h3>
+  <table>
+    <tr>
+      <th>Command</th>
+      <th>Context</th>
+      <th>Description</th>
+    </tr>
+    <tr>
+      <td><code>/link</code></td>
+      <td>Private chat (General topic)</td>
+      <td>Shows inline keyboard with groups available to link. Creates a topic for the selected group.</td>
+    </tr>
+    <tr>
+      <td><code>/unlink</code></td>
+      <td>Private chat (inside a group topic)</td>
+      <td>Removes the link and deletes/closes the topic.</td>
+    </tr>
+    <tr>
+      <td><code>/groups</code></td>
+      <td>Private chat (General topic)</td>
+      <td>Lists all currently linked groups with their topics.</td>
+    </tr>
+    <tr>
+      <td><code>/summary</code></td>
+      <td>Private chat (inside a group topic)</td>
+      <td>Summarizes the linked group chat. All existing params work (2h, 50, etc.)</td>
+    </tr>
+    <tr>
+      <td><code>/summary</code></td>
+      <td>Group chat (existing behavior)</td>
+      <td>Unchanged — works as before, group owner pays.</td>
+    </tr>
+  </table>
+
+  <h3>Flow 1: Linking a Group</h3>
+  <div class="flow">
+<span class="hl">User</span> opens private chat with bot
+  │
+  ├─ Types <span class="hl2">/link</span> in the General topic
+  │
+<span class="hl">Bot</span> queries DB for groups where it has messages from this user
+  │
+  ├─ Calls <span class="hl3">getChatMember</span> for each candidate group to verify current membership
+  │
+  ├─ Sends inline keyboard:
+  │   ┌──────────────────────────────────┐
+  │   │  Link a group to a topic:        │
+  │   │                                  │
+  │   │  [  Dev Team Chat         ]      │
+  │   │  [  Product Discussion    ]      │
+  │   │  [  Weekend Planners      ]      │
+  │   └──────────────────────────────────┘
+  │
+<span class="hl">User</span> taps "Dev Team Chat"
+  │
+<span class="hl">Bot</span>:
+  ├─ Calls <span class="hl3">createForumTopic</span>(chat_id=privateChatId, name="Dev Team Chat")
+  ├─ Stores mapping: (userId, groupChatId) → topicThreadId
+  ├─ Sends confirmation message in the new topic:
+  │   "Linked to Dev Team Chat. Use /summary here to get private summaries."
+  │
+<span class="hl">Done</span> — Topic appears in user's private chat sidebar
+  </div>
+
+  <h3>Flow 2: Getting a Private Summary</h3>
+  <div class="flow">
+<span class="hl">User</span> opens topic "Dev Team Chat" in private chat
+  │
+  ├─ Types <span class="hl2">/summary 2h</span>
+  │
+<span class="hl">Bot</span> receives webhook update:
+  │  message.chat.type = "private"
+  │  message.chat.id = privateChatId
+  │  message.message_thread_id = topicThreadId
+  │
+  ├─ Lookup: topicThreadId → groupChatId = -1001234567890
+  │
+  ├─ <span class="hl3">getChatMember</span>(chat_id=groupChatId, user_id=userId)
+  │   └─ Status: "member" → <span class="hl2">ALLOWED</span>
+  │
+  ├─ <span class="hl3">consumeCredit</span>(userId) → user's own credits charged
+  │
+  ├─ <span class="hl3">generateSummary</span>(chatId=groupChatId, range={type:'time', value:2})
+  │
+  ├─ <span class="hl3">sendMessage</span>(chat_id=privateChatId, text=summary, message_thread_id=topicThreadId)
+  │
+<span class="hl">Done</span> — Summary appears in the topic, invisible to the group
+  </div>
+
+  <h3>Flow 3: User Left Group</h3>
+  <div class="flow">
+<span class="hl">User</span> opens topic "Weekend Planners" in private chat
+  │
+  ├─ Types <span class="hl2">/summary</span>
+  │
+<span class="hl">Bot</span>:
+  ├─ Lookup: topicThreadId → groupChatId
+  ├─ <span class="hl3">getChatMember</span>(groupChatId, userId)
+  │   └─ Status: "left" → <span class="hl3">DENIED</span>
+  │
+  ├─ Sends message in topic:
+  │   "You are no longer a member of Weekend Planners.
+  │    Summary access has been revoked. Topic will be closed."
+  │
+  ├─ <span class="hl3">closeForumTopic</span>(privateChatId, topicThreadId)
+  ├─ Updates TopicLinksTable: status → "closed"
+  │
+<span class="hl">Done</span> — Topic is closed, user can /unlink to remove it entirely
+  </div>
+
+  <h3>Flow 4: Unlinking a Group</h3>
+  <div class="flow">
+<span class="hl">User</span> opens topic "Weekend Planners" in private chat
+  │
+  ├─ Types <span class="hl2">/unlink</span>
+  │
+<span class="hl">Bot</span>:
+  ├─ Confirms: "Unlink Weekend Planners? [Yes] [Cancel]"
+  │
+<span class="hl">User</span> taps [Yes]
+  │
+<span class="hl">Bot</span>:
+  ├─ Deletes DynamoDB mapping record
+  ├─ Calls <span class="hl3">deleteForumTopic</span>(privateChatId, topicThreadId)
+  ├─ Sends confirmation in General topic: "Unlinked Weekend Planners."
+  │
+<span class="hl">Done</span>
+  </div>
+</section>
+
+<!-- 6. DATA MODEL -->
+<section id="data-model">
+  <h2>06. Data Model &amp; DynamoDB Schema</h2>
+
+  <h3>New Table: TopicLinksTable</h3>
+  <p>Maps a user's private chat topic to a group chat. This is the core table for the new feature.</p>
+
+  <table>
+    <tr>
+      <th>Attribute</th>
+      <th>Type</th>
+      <th>Key</th>
+      <th>Description</th>
+    </tr>
+    <tr>
+      <td><code>userId</code></td>
+      <td>Number</td>
+      <td>Partition Key</td>
+      <td>Telegram user ID</td>
+    </tr>
+    <tr>
+      <td><code>topicThreadId</code></td>
+      <td>Number</td>
+      <td>Sort Key</td>
+      <td>The <code>message_thread_id</code> of the topic in the private chat</td>
+    </tr>
+    <tr>
+      <td><code>groupChatId</code></td>
+      <td>Number</td>
+      <td>—</td>
+      <td>The linked group's Telegram chat ID</td>
+    </tr>
+    <tr>
+      <td><code>groupTitle</code></td>
+      <td>String</td>
+      <td>—</td>
+      <td>Group name at time of linking (for display)</td>
+    </tr>
+    <tr>
+      <td><code>privateChatId</code></td>
+      <td>Number</td>
+      <td>—</td>
+      <td>User's private chat ID with the bot</td>
+    </tr>
+    <tr>
+      <td><code>linkedAt</code></td>
+      <td>Number</td>
+      <td>—</td>
+      <td>Timestamp when the link was created</td>
+    </tr>
+    <tr>
+      <td><code>status</code></td>
+      <td>String</td>
+      <td>—</td>
+      <td><code>active</code> | <code>closed</code> (closed when user leaves group)</td>
+    </tr>
+  </table>
+
+  <h4>Global Secondary Index: GroupChatIndex</h4>
+  <table>
+    <tr>
+      <th>Attribute</th>
+      <th>Key Type</th>
+      <th>Purpose</th>
+    </tr>
+    <tr>
+      <td><code>groupChatId</code></td>
+      <td>Partition Key</td>
+      <td>Find all users who linked a specific group</td>
+    </tr>
+    <tr>
+      <td><code>userId</code></td>
+      <td>Sort Key</td>
+      <td>Uniqueness — one link per user per group</td>
+    </tr>
+  </table>
+
+  <h3>New Table: UserGroupMembership (Cache — Optional)</h3>
+  <p>Tracks which groups a user has been seen in (based on messages stored). Used for the <code>/link</code> discovery flow.</p>
+
+  <table>
+    <tr>
+      <th>Attribute</th>
+      <th>Type</th>
+      <th>Key</th>
+      <th>Description</th>
+    </tr>
+    <tr>
+      <td><code>userId</code></td>
+      <td>Number</td>
+      <td>Partition Key</td>
+      <td>Telegram user ID</td>
+    </tr>
+    <tr>
+      <td><code>groupChatId</code></td>
+      <td>Number</td>
+      <td>Sort Key</td>
+      <td>Group chat the user was seen in</td>
+    </tr>
+    <tr>
+      <td><code>groupTitle</code></td>
+      <td>String</td>
+      <td>—</td>
+      <td>Last known group title</td>
+    </tr>
+    <tr>
+      <td><code>lastSeenAt</code></td>
+      <td>Number</td>
+      <td>—</td>
+      <td>Timestamp of last message from user in this group</td>
+    </tr>
+  </table>
+
+  <div class="card highlight">
+    <div class="card-title">Design Note: Why a Separate Membership Table?</div>
+    <p>The existing <code>MessagesTable</code> stores messages by <code>chatId + timestamp</code>. To discover which groups
+    a user belongs to, we'd need a full table scan — expensive and slow. The <code>UserGroupMembership</code> table provides
+    an efficient lookup by <code>userId</code> to find all groups. It's populated passively as messages are stored.</p>
+    <p><strong>Alternative (simpler, Phase 1):</strong> Instead of a new table, query the MessagesTable with a scan + filter
+    for a specific <code>userId</code>. This is inefficient but works for small scale. The dedicated table can be added in Phase 2
+    if performance becomes an issue.</p>
+  </div>
+
+  <h3>Existing Tables — No Changes Needed</h3>
+  <table>
+    <tr>
+      <th>Table</th>
+      <th>Impact</th>
+    </tr>
+    <tr>
+      <td><code>MessagesTable</code></td>
+      <td>No changes. Messages are queried by <code>chatId</code> (the group chat ID), which is exactly what we need.</td>
+    </tr>
+    <tr>
+      <td><code>UserCreditsTable</code></td>
+      <td>No changes. Credits are consumed by <code>userId</code>, works for private summaries.</td>
+    </tr>
+    <tr>
+      <td><code>ChatOwnershipTable</code></td>
+      <td>No changes. Still tracks who added the bot to groups.</td>
+    </tr>
+  </table>
+</section>
+
+<!-- 7. SYSTEM DESIGN -->
+<section id="system-design">
+  <h2>07. System Design &amp; Components</h2>
+
+  <h3>High-Level Architecture</h3>
+  <div class="flow">
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │                        <span class="hl">Lambda Handler</span>                              │
+  │                                                                      │
+  │  Webhook Update ──→ Is private chat?                                 │
+  │                      │                                               │
+  │                 ┌────┴────┐                                          │
+  │                 │ Yes     │ No                                       │
+  │                 ▼         ▼                                          │
+  │         Has topic?    Existing flow                                  │
+  │          │       │    (group commands,                               │
+  │     ┌────┴──┐    │     store messages)                               │
+  │     │ Yes   │ No │                                                   │
+  │     ▼       ▼    │                                                   │
+  │  <span class="hl2">Topic      General</span>│                                                   │
+  │  <span class="hl2">Command    Commands</span>                                                  │
+  │  <span class="hl2">Router     (/link,</span>                                                   │
+  │  <span class="hl2">(/summary) /groups,</span>                                                  │
+  │             <span class="hl2">/help)</span>                                                    │
+  │     │                                                                │
+  │     ▼                                                                │
+  │  ┌──────────────────────────────────────────┐                        │
+  │  │         <span class="hl3">TopicLinkService</span>                   │                        │
+  │  │                                          │                        │
+  │  │  lookupLink(userId, topicThreadId)        │                        │
+  │  │  → { groupChatId, groupTitle }           │                        │
+  │  │                                          │                        │
+  │  │  verifyMembership(groupChatId, userId)   │                        │
+  │  │  → getChatMember API call                │                        │
+  │  │                                          │                        │
+  │  │  createLink(userId, groupChatId, ...)    │                        │
+  │  │  deleteLink(userId, topicThreadId)       │                        │
+  │  │  getUserLinks(userId) → all linked groups│                        │
+  │  │  getUserGroups(userId) → discoverable    │                        │
+  │  └──────────────────────────────────────────┘                        │
+  │     │                                                                │
+  │     ▼                                                                │
+  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
+  │  │ <span class="hl2">SummaryEngine</span> │  │ <span class="hl2">CreditsStore</span> │  │ <span class="hl2">TelegramClient</span>│               │
+  │  │ (unchanged)  │  │ (unchanged)  │  │ (extended)   │               │
+  │  └──────────────┘  └──────────────┘  └──────────────┘               │
+  └──────────────────────────────────────────────────────────────────────┘
+  </div>
+
+  <h3>New Modules</h3>
+
+  <h4><code>src/store/topic-link-store.ts</code> <span class="tag tag-new">New</span></h4>
+  <p>DynamoDB store for topic-to-group link mappings.</p>
+  <pre><code><span class="kw">export interface</span> <span class="type">TopicLink</span> {
+  userId: <span class="type">number</span>;
+  topicThreadId: <span class="type">number</span>;
+  groupChatId: <span class="type">number</span>;
+  groupTitle: <span class="type">string</span>;
+  privateChatId: <span class="type">number</span>;
+  linkedAt: <span class="type">number</span>;
+  status: <span class="str">'active'</span> | <span class="str">'closed'</span>;
+}
+
+<span class="kw">export interface</span> <span class="type">TopicLinkStore</span> {
+  <span class="fn">createLink</span>(link: <span class="type">TopicLink</span>): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+  <span class="fn">getLink</span>(userId: <span class="type">number</span>, topicThreadId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">TopicLink</span> | <span class="type">null</span>&gt;;
+  <span class="fn">getUserLinks</span>(userId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">TopicLink</span>[]&gt;;
+  <span class="fn">getLinkByGroup</span>(userId: <span class="type">number</span>, groupChatId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">TopicLink</span> | <span class="type">null</span>&gt;;
+  <span class="fn">updateStatus</span>(userId: <span class="type">number</span>, topicThreadId: <span class="type">number</span>, status: <span class="type">string</span>): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+  <span class="fn">deleteLink</span>(userId: <span class="type">number</span>, topicThreadId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+}</code></pre>
+
+  <h4><code>src/services/membership-service.ts</code> <span class="tag tag-new">New</span></h4>
+  <p>Encapsulates Telegram API calls for membership verification and group discovery.</p>
+  <pre><code><span class="kw">export interface</span> <span class="type">MembershipService</span> {
+  <span class="comment">/** Check if user is currently a member of the group */</span>
+  <span class="fn">isGroupMember</span>(groupChatId: <span class="type">number</span>, userId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">boolean</span>&gt;;
+
+  <span class="comment">/** Get membership status details */</span>
+  <span class="fn">getMemberStatus</span>(groupChatId: <span class="type">number</span>, userId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">MemberStatus</span>&gt;;
+}
+
+<span class="kw">type</span> <span class="type">MemberStatus</span> = <span class="str">'creator'</span> | <span class="str">'administrator'</span> | <span class="str">'member'</span> | <span class="str">'restricted'</span> | <span class="str">'left'</span> | <span class="str">'kicked'</span>;</code></pre>
+
+  <h4><code>src/commands/link-handler.ts</code> <span class="tag tag-new">New</span></h4>
+  <p>Handles <code>/link</code> command — discovers available groups and creates topic links.</p>
+
+  <h4><code>src/commands/unlink-handler.ts</code> <span class="tag tag-new">New</span></h4>
+  <p>Handles <code>/unlink</code> command — removes topic links and deletes topics.</p>
+
+  <h4><code>src/commands/groups-handler.ts</code> <span class="tag tag-new">New</span></h4>
+  <p>Handles <code>/groups</code> command — lists all linked groups.</p>
+
+  <h3>Modified Modules</h3>
+
+  <h4><code>src/telegram/telegram-client.ts</code> <span class="tag tag-modified">Modified</span></h4>
+  <p>Extended with new Telegram API methods:</p>
+  <pre><code><span class="kw">export interface</span> <span class="type">TelegramClient</span> {
+  <span class="comment">// Existing</span>
+  <span class="fn">sendMessage</span>(chatId: <span class="type">number</span>, text: <span class="type">string</span>, threadId?: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+
+  <span class="comment">// New methods</span>
+  <span class="fn">createForumTopic</span>(chatId: <span class="type">number</span>, name: <span class="type">string</span>, iconColor?: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">ForumTopic</span>&gt;;
+  <span class="fn">deleteForumTopic</span>(chatId: <span class="type">number</span>, threadId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+  <span class="fn">closeForumTopic</span>(chatId: <span class="type">number</span>, threadId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+  <span class="fn">getChatMember</span>(chatId: <span class="type">number</span>, userId: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">ChatMember</span>&gt;;
+  <span class="fn">sendInlineKeyboard</span>(chatId: <span class="type">number</span>, text: <span class="type">string</span>, keyboard: <span class="type">InlineKeyboard</span>, threadId?: <span class="type">number</span>): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+}</code></pre>
+
+  <h4><code>src/handler.ts</code> <span class="tag tag-modified">Modified</span></h4>
+  <p>Extended routing logic:</p>
+  <pre><code><span class="comment">// New routing branch in handleWebhook:</span>
+<span class="kw">if</span> (message.chat.type === <span class="str">'private'</span> && message.message_thread_id) {
+  <span class="comment">// Message is in a topic within the private chat</span>
+  <span class="comment">// → Look up the topic link to find the associated group</span>
+  <span class="comment">// → Route commands to the private summary flow</span>
+}
+
+<span class="comment">// Also handle callback_query for inline keyboard responses (/link flow)</span>
+<span class="kw">if</span> (update.callback_query) {
+  <span class="comment">// → Route to callback handler for group selection</span>
+}</code></pre>
+
+  <h4><code>src/commands/summary-handler.ts</code> <span class="tag tag-modified">Modified</span></h4>
+  <p>Extended to handle the private-topic context:</p>
+  <pre><code><span class="comment">// When called from a private chat topic:</span>
+<span class="comment">// 1. Look up the topic link → get groupChatId</span>
+<span class="comment">// 2. Verify membership via getChatMember</span>
+<span class="comment">// 3. Charge the requesting user's credits (not group owner)</span>
+<span class="comment">// 4. Generate summary using groupChatId</span>
+<span class="comment">// 5. Send result to the private topic</span></code></pre>
+
+  <h4><code>src/types.ts</code> <span class="tag tag-modified">Modified</span></h4>
+  <p>Add types for new Telegram API objects:</p>
+  <pre><code><span class="comment">// Forum topic (returned by createForumTopic)</span>
+<span class="kw">export interface</span> <span class="type">ForumTopic</span> {
+  message_thread_id: <span class="type">number</span>;
+  name: <span class="type">string</span>;
+  icon_color: <span class="type">number</span>;
+  icon_custom_emoji_id?: <span class="type">string</span>;
+}
+
+<span class="comment">// Chat member status (returned by getChatMember)</span>
+<span class="kw">export interface</span> <span class="type">ChatMember</span> {
+  status: <span class="str">'creator'</span> | <span class="str">'administrator'</span> | <span class="str">'member'</span> | <span class="str">'restricted'</span> | <span class="str">'left'</span> | <span class="str">'kicked'</span>;
+  user: <span class="type">User</span>;
+  is_member?: <span class="type">boolean</span>;  <span class="comment">// for 'restricted' status</span>
+}
+
+<span class="comment">// Callback query (for inline keyboard button presses)</span>
+<span class="kw">export interface</span> <span class="type">CallbackQuery</span> {
+  id: <span class="type">string</span>;
+  from: <span class="type">User</span>;
+  message?: <span class="type">Message</span>;
+  data?: <span class="type">string</span>;       <span class="comment">// encoded action, e.g. "link:chatId:-1001234"</span>
+}
+
+<span class="comment">// Extend TelegramUpdate</span>
+<span class="kw">export interface</span> <span class="type">TelegramUpdate</span> {
+  update_id: <span class="type">number</span>;
+  message?: <span class="type">Message</span>;
+  callback_query?: <span class="type">CallbackQuery</span>;  <span class="comment">// NEW</span>
+}
+
+<span class="comment">// Extend Message</span>
+<span class="comment">// Add: is_topic_message?: boolean</span></code></pre>
+
+  <h4><code>src/handler.ts</code> — Message Storage <span class="tag tag-modified">Modified</span></h4>
+  <p>When storing messages, also update the <code>UserGroupMembership</code> table (if using Phase 2 approach):</p>
+  <pre><code><span class="comment">// In storeMessage function — passively track user-group membership</span>
+<span class="kw">if</span> (message.chat.type !== <span class="str">'private'</span> && message.from) {
+  <span class="kw">await</span> topicLinkStore.<span class="fn">trackUserInGroup</span>(
+    message.from.id,
+    message.chat.id,
+    message.chat.title
+  );
+}</code></pre>
+</section>
+
+<!-- 8. SECURITY -->
+<section id="security">
+  <h2>08. Security &amp; Access Control</h2>
+
+  <div class="card danger">
+    <div class="card-title">Critical: Membership Verification</div>
+    <p>Every private summary request <strong>must</strong> verify group membership in real-time via <code>getChatMember</code>.
+    Without this, a user could link a group, leave it, and continue accessing summaries of conversations they're no longer part of.</p>
+  </div>
+
+  <h3>Security Checks (in order)</h3>
+  <ol>
+    <li><strong>Topic Link Exists</strong> — Verify the topic is linked to a group in DynamoDB</li>
+    <li><strong>Bot is in Group</strong> — The <code>getChatMember</code> call will fail if the bot has been removed from the group. Handle this gracefully.</li>
+    <li><strong>User is Member</strong> — Check status is one of: <code>creator</code>, <code>administrator</code>, <code>member</code>, or <code>restricted</code> with <code>is_member=true</code></li>
+    <li><strong>Credits Available</strong> — Verify the requesting user has credits remaining</li>
+  </ol>
+
+  <h3>Error Messages</h3>
+  <table>
+    <tr>
+      <th>Scenario</th>
+      <th>User-Facing Message</th>
+    </tr>
+    <tr>
+      <td>Topic not linked to any group</td>
+      <td>"This topic is not linked to any group. Use /link in the General topic to set one up."</td>
+    </tr>
+    <tr>
+      <td>Bot removed from group</td>
+      <td>"I'm no longer a member of [Group Name]. I can't generate summaries for groups I'm not in."</td>
+    </tr>
+    <tr>
+      <td>User left/kicked from group</td>
+      <td>"You are no longer a member of [Group Name]. Summary access has been revoked."</td>
+    </tr>
+    <tr>
+      <td>Credits exhausted</td>
+      <td>"Daily summary credits have been used up. Credits reset at midnight UTC." (existing message)</td>
+    </tr>
+    <tr>
+      <td>Group already linked</td>
+      <td>"[Group Name] is already linked to a topic."</td>
+    </tr>
+  </table>
+
+  <h3>Data Privacy Considerations</h3>
+  <ul>
+    <li>Summaries are generated from messages already stored by the bot — no new data access</li>
+    <li>Private topics are visible only to the user and the bot</li>
+    <li>No group member notifications when summaries are generated privately</li>
+    <li><code>UserGroupMembership</code> data is derived from messages already stored (no new tracking)</li>
+  </ul>
+</section>
+
+<!-- 9. CREDITS -->
+<section id="credits">
+  <h2>09. Credits &amp; Usage Integration</h2>
+
+  <h3>Credit Charging Logic</h3>
+  <div class="card highlight">
+    <div class="card-title">Rule: Private Topic Summary → User Pays</div>
+    <p>When a <code>/summary</code> command is issued inside a private chat topic, the <strong>requesting user's credits</strong>
+    are always consumed. This overrides the current group-owner-pays model.</p>
+  </div>
+
+  <pre><code><span class="comment">// Updated credit determination logic in SummaryHandler:</span>
+
+<span class="kw">let</span> creditOwnerId: <span class="type">number</span>;
+
+<span class="kw">if</span> (isPrivateTopicSummary) {
+  <span class="comment">// Private topic — user always pays their own credits</span>
+  creditOwnerId = message.from.id;
+} <span class="kw">else if</span> (message.chat.type === <span class="str">'private'</span>) {
+  <span class="comment">// Direct private chat (no topic) — user pays</span>
+  creditOwnerId = message.from.id;
+} <span class="kw">else</span> {
+  <span class="comment">// Group chat — group owner pays (existing behavior)</span>
+  <span class="kw">const</span> ownership = <span class="kw">await</span> creditsStore.<span class="fn">getChatOwner</span>(chatId);
+  creditOwnerId = ownership?.ownerUserId ?? message.from.id;
+}</code></pre>
+
+  <h3>Impact on Existing Credit System</h3>
+  <table>
+    <tr>
+      <th>Aspect</th>
+      <th>Change</th>
+    </tr>
+    <tr>
+      <td><code>UserCreditsTable</code></td>
+      <td>No schema changes. Users who only use private summaries will have credit records created automatically.</td>
+    </tr>
+    <tr>
+      <td><code>consumeCredit()</code></td>
+      <td>No changes to the method. Called with <code>message.from.id</code> instead of group owner ID.</td>
+    </tr>
+    <tr>
+      <td><code>/credits</code> command</td>
+      <td>Should work in private topics — show the user's own credits.</td>
+    </tr>
+    <tr>
+      <td><code>/admin setcredits</code></td>
+      <td>No changes. Admins can set limits for any user ID.</td>
+    </tr>
+  </table>
+</section>
+
+<!-- 10. FILE CHANGES -->
+<section id="file-changes">
+  <h2>10. File Changes Map</h2>
+
+  <div class="file-tree">
+<pre>src/
+├── handler.ts                          <span class="mod">MODIFIED</span> — routing for private topics + callback_query
+├── types.ts                            <span class="mod">MODIFIED</span> — new types (CallbackQuery, ForumTopic, ChatMember, etc.)
+├── commands/
+│   ├── command-router.ts               <span class="mod">MODIFIED</span> — support callback query routing
+│   ├── summary-handler.ts             <span class="mod">MODIFIED</span> — private topic summary flow + credit override
+│   ├── link-handler.ts                <span class="new">NEW</span>      — /link command with inline keyboard
+│   ├── link-handler.test.ts           <span class="new">NEW</span>      — tests for link handler
+│   ├── unlink-handler.ts              <span class="new">NEW</span>      — /unlink command
+│   ├── unlink-handler.test.ts         <span class="new">NEW</span>      — tests for unlink handler
+│   ├── groups-handler.ts              <span class="new">NEW</span>      — /groups command
+│   └── groups-handler.test.ts         <span class="new">NEW</span>      — tests for groups handler
+├── store/
+│   ├── topic-link-store.ts            <span class="new">NEW</span>      — DynamoDB store for topic links
+│   ├── topic-link-store.test.ts       <span class="new">NEW</span>      — tests for topic link store
+│   └── user-group-store.ts            <span class="new">NEW</span>      — (Phase 2) user-group membership cache
+├── services/
+│   ├── membership-service.ts          <span class="new">NEW</span>      — Telegram getChatMember wrapper
+│   └── membership-service.test.ts     <span class="new">NEW</span>      — tests for membership service
+├── telegram/
+│   └── telegram-client.ts             <span class="mod">MODIFIED</span> — new API methods (createForumTopic, etc.)
+├── errors/
+│   └── error-handler.ts               <span class="mod">MODIFIED</span> — new error types (NotGroupMemberError, etc.)
+template.yaml                           <span class="mod">MODIFIED</span> — new DynamoDB table + IAM policies
+</pre>
+  </div>
+</section>
+
+<!-- 11. IMPLEMENTATION PHASES -->
+<section id="implementation-phases">
+  <h2>11. Implementation Phases</h2>
+
+  <div class="phase"><span class="phase-num">1</span> Foundation</div>
+  <div class="card">
+    <div class="card-title">Phase 1: Core Infrastructure</div>
+    <ul class="checklist">
+      <li>Add new types to <code>types.ts</code> (CallbackQuery, ForumTopic, ChatMember, InlineKeyboard)</li>
+      <li>Extend <code>TelegramClient</code> with <code>createForumTopic</code>, <code>deleteForumTopic</code>, <code>closeForumTopic</code>, <code>getChatMember</code>, <code>sendInlineKeyboard</code>, <code>answerCallbackQuery</code></li>
+      <li>Create <code>TopicLinkStore</code> (DynamoDB CRUD for topic links)</li>
+      <li>Create <code>MembershipService</code> (wrapper around getChatMember)</li>
+      <li>Add <code>TopicLinksTable</code> to <code>template.yaml</code></li>
+      <li>Write tests for all new stores and services</li>
+    </ul>
+  </div>
+
+  <div class="phase"><span class="phase-num">2</span> Commands</div>
+  <div class="card">
+    <div class="card-title">Phase 2: New Commands</div>
+    <ul class="checklist">
+      <li>Implement <code>/link</code> handler with group discovery and inline keyboard</li>
+      <li>Implement callback query handler for group selection</li>
+      <li>Implement <code>/unlink</code> handler with confirmation</li>
+      <li>Implement <code>/groups</code> handler for listing linked groups</li>
+      <li>Register new commands in <code>handler.ts</code></li>
+      <li>Write tests for all command handlers</li>
+    </ul>
+  </div>
+
+  <div class="phase"><span class="phase-num">3</span> Summary Flow</div>
+  <div class="card">
+    <div class="card-title">Phase 3: Private Summary Flow</div>
+    <ul class="checklist">
+      <li>Modify <code>handleWebhook</code> routing for private chat topics</li>
+      <li>Modify <code>SummaryHandler</code> to detect private topic context</li>
+      <li>Add membership verification before summary generation</li>
+      <li>Override credit charging to use requesting user's credits</li>
+      <li>Handle edge cases (bot removed from group, topic link invalid, etc.)</li>
+      <li>Add new error types and messages</li>
+      <li>Write integration-level tests</li>
+    </ul>
+  </div>
+
+  <div class="phase"><span class="phase-num">4</span> Discovery</div>
+  <div class="card">
+    <div class="card-title">Phase 4: Group Discovery &amp; Passive Tracking</div>
+    <ul class="checklist">
+      <li>Add passive user-group tracking in message storage flow</li>
+      <li>(Optional) Create <code>UserGroupMembership</code> table for efficient lookup</li>
+      <li>Implement efficient group discovery for <code>/link</code> command</li>
+      <li>Add group title update logic when messages arrive with new titles</li>
+    </ul>
+  </div>
+
+  <div class="phase"><span class="phase-num">5</span> Polish</div>
+  <div class="card">
+    <div class="card-title">Phase 5: Polish &amp; Deploy</div>
+    <ul class="checklist">
+      <li>Update <code>/help</code> command with new feature documentation</li>
+      <li>Update welcome message to mention private summaries</li>
+      <li>BotFather configuration: enable topics in private chats</li>
+      <li>End-to-end testing with real Telegram bot</li>
+      <li>Deploy with SAM (<code>template.yaml</code> changes)</li>
+      <li>Register updated commands with BotFather (<code>/link</code>, <code>/unlink</code>, <code>/groups</code>)</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 12. OPEN QUESTIONS -->
+<section id="open-questions">
+  <h2>12. Open Questions &amp; Risks</h2>
+
+  <div class="card warning">
+    <div class="card-title">Q1: Group Discovery — How to Find User's Groups Efficiently?</div>
+    <p><strong>Challenge:</strong> The bot needs to know which groups a user is in. The <code>MessagesTable</code> is keyed by
+    <code>chatId + timestamp</code>, not by <code>userId</code>. Finding all groups for a user requires scanning.</p>
+    <p><strong>Proposed solutions (in order of preference):</strong></p>
+    <ol>
+      <li><strong>Passive tracking table</strong> — Write to <code>UserGroupMembership</code> every time we store a message. Fast lookups, small overhead per message write.</li>
+      <li><strong>Query from existing data</strong> — Use a DynamoDB Global Secondary Index on <code>userId</code> in MessagesTable. Would need schema change and additional RCU.</li>
+      <li><strong>In-memory scan at link time</strong> — Query all groups the bot is in (from ChatOwnershipTable) and call getChatMember for each. Simple but scales poorly.</li>
+    </ol>
+    <p><strong>Recommendation:</strong> Option 1 (passive tracking table). Low cost, efficient reads, negligible write overhead.</p>
+  </div>
+
+  <div class="card warning">
+    <div class="card-title">Q2: Rate Limiting for getChatMember</div>
+    <p><strong>Challenge:</strong> Telegram has rate limits (~30 requests/second for bots). If many users request summaries simultaneously, we could hit the limit.</p>
+    <p><strong>Mitigation:</strong> One getChatMember call per summary request is unlikely to cause issues at current scale.
+    If needed later, implement a short TTL cache (5 minutes) for membership status in Lambda memory or DynamoDB.</p>
+  </div>
+
+  <div class="card warning">
+    <div class="card-title">Q3: What Happens When the Bot is Removed from a Group?</div>
+    <p><strong>Scenario:</strong> A group admin removes the bot. All users with private topics linked to that group lose access.</p>
+    <p><strong>Handling:</strong> The <code>getChatMember</code> call will fail with "chat not found" or similar error.
+    The bot should catch this, notify the user that the bot is no longer in the group, and offer to unlink the topic.</p>
+  </div>
+
+  <div class="card warning">
+    <div class="card-title">Q4: Topic Name Conflicts</div>
+    <p><strong>Scenario:</strong> User is in two groups both named "General Discussion".</p>
+    <p><strong>Handling:</strong> Append a short identifier (e.g., last 4 digits of chat ID) to disambiguate:
+    "General Discussion (#4567)".</p>
+  </div>
+
+  <div class="card warning">
+    <div class="card-title">Q5: Maximum Topics Per Private Chat</div>
+    <p><strong>Risk:</strong> Telegram may impose a limit on the number of topics in a private chat (supergroups support up to ~32,000 topics,
+    but private chats may have a lower limit).</p>
+    <p><strong>Mitigation:</strong> Implement a reasonable client-side limit (e.g., 20 linked groups per user) and test with Telegram to find the actual limit.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Q6: Callback Query Handling</div>
+    <p><strong>Note:</strong> The current <code>handleWebhook</code> only processes <code>update.message</code>.
+    The <code>/link</code> flow requires handling <code>update.callback_query</code> for inline keyboard button presses.
+    This is a new update type that must be added to the handler routing.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Q7: Lambda Cold Start Impact</div>
+    <p>Adding new DynamoDB clients and Telegram API calls increases cold start time slightly.
+    The singleton caching pattern already in use should be extended to the new stores.
+    Expected impact: ~50-100ms additional cold start time.</p>
+  </div>
+</section>
+
+<hr>
+
+<section>
+  <h2>Summary of Deliverables</h2>
+  <table>
+    <tr>
+      <th>Category</th>
+      <th>Count</th>
+      <th>Details</th>
+    </tr>
+    <tr>
+      <td>New files</td>
+      <td>~10</td>
+      <td>Stores, services, command handlers + tests</td>
+    </tr>
+    <tr>
+      <td>Modified files</td>
+      <td>~7</td>
+      <td>handler, types, telegram-client, summary-handler, error-handler, command-router, template.yaml</td>
+    </tr>
+    <tr>
+      <td>New DynamoDB tables</td>
+      <td>1-2</td>
+      <td>TopicLinksTable (required), UserGroupMembership (optional Phase 2)</td>
+    </tr>
+    <tr>
+      <td>New Telegram API methods</td>
+      <td>5-6</td>
+      <td>createForumTopic, deleteForumTopic, closeForumTopic, getChatMember, sendInlineKeyboard, answerCallbackQuery</td>
+    </tr>
+    <tr>
+      <td>New bot commands</td>
+      <td>3</td>
+      <td>/link, /unlink, /groups</td>
+    </tr>
+    <tr>
+      <td>Implementation phases</td>
+      <td>5</td>
+      <td>Foundation → Commands → Summary Flow → Discovery → Polish</td>
+    </tr>
+  </table>
+</section>
+
+</div>
+</body>
+</html>

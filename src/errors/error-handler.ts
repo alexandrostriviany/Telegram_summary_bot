@@ -53,6 +53,10 @@ export enum ErrorCode {
   CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
   CREDITS_EXHAUSTED = 'CREDITS_EXHAUSTED',
   UNAUTHORIZED = 'UNAUTHORIZED',
+  NOT_GROUP_MEMBER = 'NOT_GROUP_MEMBER',
+  TOPIC_NOT_LINKED = 'TOPIC_NOT_LINKED',
+  BOT_NOT_IN_GROUP = 'BOT_NOT_IN_GROUP',
+  GROUP_ALREADY_LINKED = 'GROUP_ALREADY_LINKED',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
@@ -218,6 +222,73 @@ export class UnauthorizedError extends BotError {
   }
 }
 
+/**
+ * Error thrown when a user is no longer a member of the linked group
+ */
+export class NotGroupMemberError extends BotError {
+  /** Title of the group the user is no longer a member of */
+  public readonly groupTitle?: string;
+  /** Telegram user ID */
+  public readonly userId?: number;
+
+  constructor(groupTitle?: string, userId?: number) {
+    const message = groupTitle
+      ? `You are no longer a member of ${groupTitle}. Summary access has been revoked.`
+      : 'You are no longer a member of this group. Summary access has been revoked.';
+    super(message, ErrorCode.NOT_GROUP_MEMBER);
+    this.name = 'NotGroupMemberError';
+    this.groupTitle = groupTitle;
+    this.userId = userId;
+  }
+}
+
+/**
+ * Error thrown when a topic is not linked to any group
+ */
+export class TopicNotLinkedError extends BotError {
+  constructor() {
+    super(
+      'This topic is not linked to any group. Use /link here to link it to a group first.',
+      ErrorCode.TOPIC_NOT_LINKED,
+    );
+    this.name = 'TopicNotLinkedError';
+  }
+}
+
+/**
+ * Error thrown when the bot is no longer a member of the linked group
+ */
+export class BotNotInGroupError extends BotError {
+  /** Title of the group the bot is no longer in */
+  public readonly groupTitle?: string;
+
+  constructor(groupTitle?: string) {
+    const message = groupTitle
+      ? `I'm no longer a member of ${groupTitle}. I can't generate summaries for groups I'm not in.`
+      : "I'm no longer a member of this group. I can't generate summaries for groups I'm not in.";
+    super(message, ErrorCode.BOT_NOT_IN_GROUP);
+    this.name = 'BotNotInGroupError';
+    this.groupTitle = groupTitle;
+  }
+}
+
+/**
+ * Error thrown when a group is already linked to a topic for this user
+ */
+export class GroupAlreadyLinkedError extends BotError {
+  /** Title of the group that is already linked */
+  public readonly groupTitle?: string;
+
+  constructor(groupTitle?: string) {
+    const message = groupTitle
+      ? `${groupTitle} is already linked to a topic.`
+      : 'This group is already linked to a topic.';
+    super(message, ErrorCode.GROUP_ALREADY_LINKED);
+    this.name = 'GroupAlreadyLinkedError';
+    this.groupTitle = groupTitle;
+  }
+}
+
 // ============================================================================
 // User-Friendly Error Messages
 // ============================================================================
@@ -238,6 +309,10 @@ const USER_FRIENDLY_MESSAGES: Record<ErrorCode, string> = {
   [ErrorCode.CONFIGURATION_ERROR]: 'The bot is not properly configured. Please contact the administrator.',
   [ErrorCode.CREDITS_EXHAUSTED]: 'Daily summary credits have been used up. Credits reset at midnight UTC.',
   [ErrorCode.UNAUTHORIZED]: 'You are not authorized to perform this action.',
+  [ErrorCode.NOT_GROUP_MEMBER]: 'You are no longer a member of this group. Summary access has been revoked.',
+  [ErrorCode.TOPIC_NOT_LINKED]: 'This topic is not linked to any group. Use /link here to link it to a group first.',
+  [ErrorCode.BOT_NOT_IN_GROUP]: "I'm no longer a member of this group. I can't generate summaries for groups I'm not in.",
+  [ErrorCode.GROUP_ALREADY_LINKED]: 'This group is already linked to a topic.',
   [ErrorCode.UNKNOWN_ERROR]: 'Something went wrong. Please try again.',
 };
 

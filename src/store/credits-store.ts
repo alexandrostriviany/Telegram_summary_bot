@@ -13,6 +13,7 @@ import {
   GetItemCommand,
   PutItemCommand,
   UpdateItemCommand,
+  ScanCommand,
 } from '@aws-sdk/client-dynamodb';
 
 /**
@@ -92,6 +93,12 @@ export interface CreditsStore {
    * @returns The chat ownership record, or null if not found
    */
   getChatOwner(chatId: number): Promise<ChatOwnership | null>;
+
+  /**
+   * Get all known chat ownership records (all groups the bot was added to)
+   * @returns Array of chat ownership records
+   */
+  getAllChats(): Promise<ChatOwnership[]>;
 }
 
 /**
@@ -307,6 +314,24 @@ export class DynamoDBCreditsStore implements CreditsStore {
       ownerUserId: parseInt(response.Item.ownerUserId.N!, 10),
       addedAt: parseInt(response.Item.addedAt.N!, 10),
     };
+  }
+
+  async getAllChats(): Promise<ChatOwnership[]> {
+    const scanCommand = new ScanCommand({
+      TableName: this.ownershipTableName,
+    });
+
+    const response = await this.client.send(scanCommand);
+
+    if (!response.Items || response.Items.length === 0) {
+      return [];
+    }
+
+    return response.Items.map((item) => ({
+      chatId: parseInt(item.chatId.N!, 10),
+      ownerUserId: parseInt(item.ownerUserId.N!, 10),
+      addedAt: parseInt(item.addedAt.N!, 10),
+    }));
   }
 }
 

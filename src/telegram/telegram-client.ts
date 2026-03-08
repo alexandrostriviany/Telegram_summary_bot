@@ -1,11 +1,13 @@
 /**
  * Telegram Bot API Client
- * 
+ *
  * Provides a wrapper for Telegram Bot API calls with retry logic,
  * error handling, and HTML formatting support.
- * 
+ *
  * @module telegram/telegram-client
  */
+
+import { ForumTopic, ChatMember, InlineKeyboardMarkup } from '../types';
 
 /**
  * Maximum message length allowed by Telegram
@@ -32,6 +34,84 @@ export interface TelegramClient {
    * @param threadId - Optional forum topic thread ID to reply in the correct topic
    */
   sendMessage(chatId: number, text: string, threadId?: number): Promise<void>;
+
+  /**
+   * Create a forum topic in a supergroup chat
+   *
+   * @param chatId - The supergroup chat ID
+   * @param name - Name of the topic (1-128 characters)
+   * @param iconColor - Optional color of the topic icon in RGB format
+   * @returns The created ForumTopic
+   */
+  createForumTopic(chatId: number, name: string, iconColor?: number): Promise<ForumTopic>;
+
+  /**
+   * Edit a forum topic name
+   *
+   * @param chatId - The chat ID
+   * @param threadId - Unique identifier of the target forum topic
+   * @param name - New topic name
+   */
+  editForumTopic(chatId: number, threadId: number, name: string): Promise<void>;
+
+  /**
+   * Delete a forum topic in a supergroup chat
+   *
+   * @param chatId - The supergroup chat ID
+   * @param threadId - Unique identifier of the target forum topic
+   */
+  deleteForumTopic(chatId: number, threadId: number): Promise<void>;
+
+  /**
+   * Close a forum topic in a supergroup chat
+   *
+   * @param chatId - The supergroup chat ID
+   * @param threadId - Unique identifier of the target forum topic
+   */
+  closeForumTopic(chatId: number, threadId: number): Promise<void>;
+
+  /**
+   * Reopen a closed forum topic in a supergroup chat
+   *
+   * @param chatId - The supergroup chat ID
+   * @param threadId - Unique identifier of the target forum topic
+   */
+  reopenForumTopic(chatId: number, threadId: number): Promise<void>;
+
+  /**
+   * Get up-to-date information about a chat
+   *
+   * @param chatId - The chat ID
+   * @returns Object with at least id, type, and title fields
+   */
+  getChat(chatId: number): Promise<{ id: number; type: string; title?: string }>;
+
+  /**
+   * Get information about a member of a chat
+   *
+   * @param chatId - The chat ID
+   * @param userId - Unique identifier of the target user
+   * @returns ChatMember object with status and user info
+   */
+  getChatMember(chatId: number, userId: number): Promise<ChatMember>;
+
+  /**
+   * Send a message with an inline keyboard
+   *
+   * @param chatId - The chat ID to send the message to
+   * @param text - The message text (supports HTML)
+   * @param keyboard - The inline keyboard markup
+   * @param threadId - Optional forum topic thread ID
+   */
+  sendInlineKeyboard(chatId: number, text: string, keyboard: InlineKeyboardMarkup, threadId?: number): Promise<void>;
+
+  /**
+   * Answer a callback query from an inline keyboard button press
+   *
+   * @param callbackQueryId - Unique identifier for the callback query
+   * @param text - Optional text to show as a notification to the user
+   */
+  answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>;
 }
 
 /**
@@ -191,9 +271,130 @@ export class TelegramBotClient implements TelegramClient {
     throw lastError ?? new TelegramApiError('Unknown error', 500);
   }
 
+  async createForumTopic(chatId: number, name: string, iconColor?: number): Promise<ForumTopic> {
+    const params: Record<string, unknown> = { chat_id: chatId, name };
+    if (iconColor !== undefined) {
+      params.icon_color = iconColor;
+    }
+    return this.callApi<ForumTopic>('createForumTopic', params);
+  }
+
+  async editForumTopic(chatId: number, threadId: number, name: string): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/editForumTopic`;
+    await this.makeApiCall(url, { chat_id: chatId, message_thread_id: threadId, name });
+  }
+
+  async deleteForumTopic(chatId: number, threadId: number): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/deleteForumTopic`;
+    await this.makeApiCall(url, { chat_id: chatId, message_thread_id: threadId });
+  }
+
+  async closeForumTopic(chatId: number, threadId: number): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/closeForumTopic`;
+    await this.makeApiCall(url, { chat_id: chatId, message_thread_id: threadId });
+  }
+
+  async reopenForumTopic(chatId: number, threadId: number): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/reopenForumTopic`;
+    await this.makeApiCall(url, { chat_id: chatId, message_thread_id: threadId });
+  }
+
+  async getChat(chatId: number): Promise<{ id: number; type: string; title?: string }> {
+    return this.callApi<{ id: number; type: string; title?: string }>('getChat', { chat_id: chatId });
+  }
+
+  async getChatMember(chatId: number, userId: number): Promise<ChatMember> {
+    return this.callApi<ChatMember>('getChatMember', { chat_id: chatId, user_id: userId });
+  }
+
+  async sendInlineKeyboard(chatId: number, text: string, keyboard: InlineKeyboardMarkup, threadId?: number): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/sendMessage`;
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      text,
+      reply_markup: keyboard,
+      parse_mode: 'HTML',
+    };
+    if (threadId !== undefined) {
+      body.message_thread_id = threadId;
+    }
+    await this.makeApiCall(url, body);
+  }
+
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/answerCallbackQuery`;
+    const body: Record<string, unknown> = { callback_query_id: callbackQueryId };
+    if (text !== undefined) {
+      body.text = text;
+    }
+    await this.makeApiCall(url, body);
+  }
+
+  /**
+   * Generic API call that returns parsed result data with retry logic
+   *
+   * @param method - The Telegram Bot API method name
+   * @param params - The request parameters
+   * @returns The parsed result from the Telegram API response
+   * @throws TelegramApiError if all retry attempts fail
+   */
+  private async callApi<T>(method: string, params: Record<string, unknown>): Promise<T> {
+    const url = `${this.apiBaseUrl}${this.botToken}/${method}`;
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        });
+
+        if (!response.ok) {
+          let errorDescription: string | undefined;
+          try {
+            const errorBody = await response.json() as TelegramApiResponse;
+            errorDescription = errorBody.description;
+          } catch {
+            // Ignore JSON parsing errors for error response
+          }
+          throw new TelegramApiError(
+            `Telegram API error: ${response.status}${errorDescription ? ` - ${errorDescription}` : ''}`,
+            response.status,
+            errorDescription
+          );
+        }
+
+        const responseBody = await response.json() as TelegramApiResponse;
+        if (!responseBody.ok) {
+          throw new TelegramApiError(
+            `Telegram API returned error: ${responseBody.description ?? 'Unknown error'}`,
+            responseBody.error_code ?? 500,
+            responseBody.description
+          );
+        }
+
+        return responseBody.result as T;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(
+          `Telegram API call ${method} failed (attempt ${attempt + 1}/${this.maxRetries + 1}):`,
+          lastError.message
+        );
+
+        if (attempt < this.maxRetries) {
+          const delay = this.calculateBackoffDelay(attempt);
+          await this.sleep(delay);
+        }
+      }
+    }
+
+    throw lastError ?? new TelegramApiError('Unknown error', 500);
+  }
+
   /**
    * Strip HTML formatting from text
-   * 
+   *
    * @param text - Text with HTML
    * @returns Plain text without HTML
    */

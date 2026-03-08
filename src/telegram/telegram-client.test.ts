@@ -12,6 +12,7 @@ import {
   TelegramClientConfig,
   createTelegramClient,
 } from './telegram-client';
+import { InlineKeyboardMarkup } from '../types';
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -262,15 +263,459 @@ describe('TelegramBotClient', () => {
         });
 
       const client = new TelegramBotClient(defaultConfig);
-      
+
       const sendPromise = client.sendMessage(12345, 'Test');
-      
+
       // Advance timer for retry
       await jest.advanceTimersByTimeAsync(10);
-      
+
       await sendPromise;
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('createForumTopic()', () => {
+    it('should create a forum topic successfully', async () => {
+      const forumTopic = {
+        message_thread_id: 42,
+        name: 'Test Topic',
+        icon_color: 0x6FB9F0,
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, result: forumTopic }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      const result = await client.createForumTopic(-1001234567890, 'Test Topic', 0x6FB9F0);
+
+      expect(result).toEqual(forumTopic);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${defaultConfig.botToken}/createForumTopic`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: -1001234567890,
+            name: 'Test Topic',
+            icon_color: 0x6FB9F0,
+          }),
+        }
+      );
+    });
+
+    it('should create a forum topic without icon color', async () => {
+      const forumTopic = {
+        message_thread_id: 42,
+        name: 'No Color Topic',
+        icon_color: 0x000000,
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, result: forumTopic }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      const result = await client.createForumTopic(-1001234567890, 'No Color Topic');
+
+      expect(result).toEqual(forumTopic);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({
+            chat_id: -1001234567890,
+            name: 'No Color Topic',
+          }),
+        })
+      );
+    });
+
+    it('should throw TelegramApiError on HTTP error', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          ok: false,
+          error_code: 400,
+          description: 'Bad Request: not enough rights to manage topics',
+        }),
+      });
+
+      const client = new TelegramBotClient({
+        ...defaultConfig,
+        maxRetries: 0,
+      });
+
+      await expect(
+        client.createForumTopic(-1001234567890, 'Test')
+      ).rejects.toThrow(TelegramApiError);
+    });
+
+    it('should retry on failure and succeed', async () => {
+      const forumTopic = { message_thread_id: 42, name: 'Topic', icon_color: 0 };
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ ok: true, result: forumTopic }),
+        });
+
+      const client = new TelegramBotClient(defaultConfig);
+
+      const promise = client.createForumTopic(-100123, 'Topic');
+      await jest.advanceTimersByTimeAsync(defaultConfig.baseDelayMs!);
+      const result = await promise;
+
+      expect(result).toEqual(forumTopic);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('deleteForumTopic()', () => {
+    it('should delete a forum topic successfully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      await client.deleteForumTopic(-1001234567890, 42);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${defaultConfig.botToken}/deleteForumTopic`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: -1001234567890,
+            message_thread_id: 42,
+          }),
+        }
+      );
+    });
+
+    it('should throw TelegramApiError on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          ok: false,
+          error_code: 400,
+          description: 'Bad Request: TOPIC_NOT_MODIFIED',
+        }),
+      });
+
+      const client = new TelegramBotClient({
+        ...defaultConfig,
+        maxRetries: 0,
+      });
+
+      await expect(
+        client.deleteForumTopic(-1001234567890, 42)
+      ).rejects.toThrow(TelegramApiError);
+    });
+  });
+
+  describe('closeForumTopic()', () => {
+    it('should close a forum topic successfully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      await client.closeForumTopic(-1001234567890, 42);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${defaultConfig.botToken}/closeForumTopic`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: -1001234567890,
+            message_thread_id: 42,
+          }),
+        }
+      );
+    });
+
+    it('should throw TelegramApiError on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({
+          ok: false,
+          error_code: 403,
+          description: 'Forbidden: not enough rights',
+        }),
+      });
+
+      const client = new TelegramBotClient({
+        ...defaultConfig,
+        maxRetries: 0,
+      });
+
+      await expect(
+        client.closeForumTopic(-1001234567890, 42)
+      ).rejects.toThrow(TelegramApiError);
+    });
+  });
+
+  describe('reopenForumTopic()', () => {
+    it('should reopen a forum topic successfully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      await client.reopenForumTopic(-1001234567890, 42);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${defaultConfig.botToken}/reopenForumTopic`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: -1001234567890,
+            message_thread_id: 42,
+          }),
+        }
+      );
+    });
+
+    it('should throw TelegramApiError on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          ok: false,
+          error_code: 400,
+          description: 'Bad Request: TOPIC_NOT_MODIFIED',
+        }),
+      });
+
+      const client = new TelegramBotClient({
+        ...defaultConfig,
+        maxRetries: 0,
+      });
+
+      await expect(
+        client.reopenForumTopic(-1001234567890, 42)
+      ).rejects.toThrow(TelegramApiError);
+    });
+  });
+
+  describe('getChatMember()', () => {
+    it('should get a chat member successfully', async () => {
+      const chatMember = {
+        status: 'administrator',
+        user: { id: 999, first_name: 'Admin', username: 'admin_user' },
+      };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true, result: chatMember }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      const result = await client.getChatMember(-1001234567890, 999);
+
+      expect(result).toEqual(chatMember);
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${defaultConfig.botToken}/getChatMember`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: -1001234567890,
+            user_id: 999,
+          }),
+        }
+      );
+    });
+
+    it('should throw TelegramApiError when user not found', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          ok: false,
+          error_code: 400,
+          description: 'Bad Request: user not found',
+        }),
+      });
+
+      const client = new TelegramBotClient({
+        ...defaultConfig,
+        maxRetries: 0,
+      });
+
+      await expect(
+        client.getChatMember(-1001234567890, 999)
+      ).rejects.toThrow(TelegramApiError);
+    });
+
+    it('should retry on failure and return result', async () => {
+      const chatMember = {
+        status: 'member',
+        user: { id: 999, first_name: 'User' },
+      };
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ ok: true, result: chatMember }),
+        });
+
+      const client = new TelegramBotClient(defaultConfig);
+
+      const promise = client.getChatMember(-100123, 999);
+      await jest.advanceTimersByTimeAsync(defaultConfig.baseDelayMs!);
+      const result = await promise;
+
+      expect(result).toEqual(chatMember);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('sendInlineKeyboard()', () => {
+    const keyboard: InlineKeyboardMarkup = {
+      inline_keyboard: [
+        [{ text: 'Option A', callback_data: 'a' }, { text: 'Option B', callback_data: 'b' }],
+      ],
+    };
+
+    it('should send an inline keyboard message successfully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      await client.sendInlineKeyboard(12345, 'Choose an option:', keyboard);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${defaultConfig.botToken}/sendMessage`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: 12345,
+            text: 'Choose an option:',
+            reply_markup: keyboard,
+            parse_mode: 'HTML',
+          }),
+        }
+      );
+    });
+
+    it('should send an inline keyboard with threadId', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      await client.sendInlineKeyboard(12345, 'Choose:', keyboard, 42);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({
+            chat_id: 12345,
+            text: 'Choose:',
+            reply_markup: keyboard,
+            parse_mode: 'HTML',
+            message_thread_id: 42,
+          }),
+        })
+      );
+    });
+
+    it('should throw TelegramApiError on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          ok: false,
+          error_code: 400,
+          description: 'Bad Request: chat not found',
+        }),
+      });
+
+      const client = new TelegramBotClient({
+        ...defaultConfig,
+        maxRetries: 0,
+      });
+
+      await expect(
+        client.sendInlineKeyboard(12345, 'Test', keyboard)
+      ).rejects.toThrow(TelegramApiError);
+    });
+  });
+
+  describe('answerCallbackQuery()', () => {
+    it('should answer a callback query successfully', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      await client.answerCallbackQuery('query-123');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${defaultConfig.botToken}/answerCallbackQuery`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: 'query-123',
+          }),
+        }
+      );
+    });
+
+    it('should answer a callback query with text', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ok: true }),
+      });
+
+      const client = new TelegramBotClient(defaultConfig);
+      await client.answerCallbackQuery('query-123', 'Topic linked!');
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          body: JSON.stringify({
+            callback_query_id: 'query-123',
+            text: 'Topic linked!',
+          }),
+        })
+      );
+    });
+
+    it('should throw TelegramApiError on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          ok: false,
+          error_code: 400,
+          description: 'Bad Request: query is too old',
+        }),
+      });
+
+      const client = new TelegramBotClient({
+        ...defaultConfig,
+        maxRetries: 0,
+      });
+
+      await expect(
+        client.answerCallbackQuery('old-query')
+      ).rejects.toThrow(TelegramApiError);
     });
   });
 });
