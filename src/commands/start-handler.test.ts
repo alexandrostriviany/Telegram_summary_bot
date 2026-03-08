@@ -119,29 +119,13 @@ describe('StartHandler', () => {
   });
 
   describe('private chat onboarding (no args)', () => {
-    it('should send welcome message with reply keyboard', async () => {
+    it('should send welcome message via sendMessage', async () => {
       const message = makePrivateMessage();
       await handler.execute(message, []);
 
-      expect(mockTelegramClient.sendInlineKeyboard).toHaveBeenCalledWith(
-        100,
-        WELCOME_MESSAGE,
-        expect.objectContaining({
-          inline_keyboard: expect.arrayContaining([
-            expect.arrayContaining([
-              expect.objectContaining({ text: '🔗 Link Group', callback_data: 'menu:link' }),
-            ]),
-          ]),
-        }),
-      );
+      expect(mockSendMessage).toHaveBeenCalledWith(100, WELCOME_MESSAGE);
     });
 
-    it('should not call sendMessage directly for onboarding', async () => {
-      const message = makePrivateMessage();
-      await handler.execute(message, []);
-
-      expect(mockSendMessage).not.toHaveBeenCalled();
-    });
   });
 
   describe('deep link: /start link_<chatId>', () => {

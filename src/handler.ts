@@ -8,7 +8,7 @@
  */
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { TelegramUpdate, Message, CallbackQuery, StoredMessage, User, BotUser } from './types';
+import { TelegramUpdate, Message, CallbackQuery, StoredMessage, User, BotUser, InlineKeyboardMarkup } from './types';
 import { DynamoDBMessageStore, MessageStore } from './store/message-store';
 import { CommandRouter, createCommandRouter } from './commands/command-router';
 import { createHelpHandler } from './commands/help-handler';
@@ -678,7 +678,26 @@ export async function handler(
 
     // Bind the forum topic threadId so all responses go to the correct topic
     const threadId = update.message?.message_thread_id ?? update.callback_query?.message?.message_thread_id;
-    const sendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
+    const chatType = update.message?.chat.type ?? update.callback_query?.message?.chat.type;
+    const isPrivateChat = chatType === 'private';
+
+    // In private chats, every bot reply gets inline menu buttons
+    const MENU_KEYBOARD: InlineKeyboardMarkup = {
+      inline_keyboard: [
+        [
+          { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
+          { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
+        ],
+        [
+          { text: '\u{1F4CA} Credits', callback_data: 'menu:credits' },
+          { text: '\u2753 Help', callback_data: 'menu:help' },
+        ],
+      ],
+    };
+
+    const sendMsg = isPrivateChat
+      ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, MENU_KEYBOARD, threadId)
+      : (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
     // Create command router with Telegram client's sendMessage method
     const commandRouter = createCommandRouter(sendMsg);

@@ -76,30 +76,8 @@ export class StartHandler implements CommandHandler {
       return;
     }
 
-    // Send welcome with inline buttons on the message
-    await this.telegramClient.sendInlineKeyboard(
-      chatId,
-      WELCOME_MESSAGE,
-      {
-        inline_keyboard: [
-          [
-            { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
-            { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
-          ],
-          [
-            { text: '\u{1F4CA} Credits', callback_data: 'menu:credits' },
-            { text: '\u2753 Help', callback_data: 'menu:help' },
-          ],
-        ],
-      },
-    );
-
-    // Also send a persistent reply keyboard for quick access from input area
-    await this.telegramClient.sendWithReplyKeyboard(
-      chatId,
-      'Use the buttons below for quick access:',
-      START_REPLY_KEYBOARD,
-    );
+    // Send welcome message — menu buttons are appended automatically by sendMsg
+    await this.sendMessage(chatId, WELCOME_MESSAGE);
   }
 
   /**
