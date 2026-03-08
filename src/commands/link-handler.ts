@@ -114,7 +114,7 @@ export class LinkHandler implements CommandHandler {
 
     await this.telegramClient.sendInlineKeyboard(
       chatId,
-      'Select a group to link to this topic:',
+      'Select a group to link to this topic.\nIf already linked, it will be re-linked here.',
       { inline_keyboard: buttons },
       topicThreadId,
     );
