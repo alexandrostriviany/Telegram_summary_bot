@@ -8,18 +8,24 @@
  */
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { TelegramUpdate, Message, StoredMessage, User } from './types';
+import { TelegramUpdate, Message, CallbackQuery, StoredMessage, User } from './types';
 import { DynamoDBMessageStore, MessageStore } from './store/message-store';
 import { CommandRouter, createCommandRouter } from './commands/command-router';
 import { createHelpHandler } from './commands/help-handler';
 import { createSummaryHandler } from './commands/summary-handler';
 import { createCreditsHandler } from './commands/credits-handler';
 import { createAdminHandler } from './commands/admin-handler';
+import { createLinkHandler, handleLinkCallback } from './commands/link-handler';
+import { createUnlinkHandler, UNLINK_CONFIRM_PREFIX, UNLINK_CANCEL_PREFIX } from './commands/unlink-handler';
+import { createGroupsHandler } from './commands/groups-handler';
 import { TelegramClient, createTelegramClient } from './telegram/telegram-client';
 import { createSummaryEngine } from './summary/summary-engine';
 import { createSummaryFormatter } from './summary/summary-formatter';
 import { createAIProvider, isAIProviderConfigured, getProviderTypeFromEnv } from './ai/ai-provider';
 import { DynamoDBCreditsStore, CreditsStore } from './store/credits-store';
+import { DynamoDBTopicLinkStore, TopicLinkStore } from './store/topic-link-store';
+import { DynamoDBUserGroupStore, UserGroupStore } from './store/user-group-store';
+import { createMembershipService, MembershipService } from './services/membership-service';
 import { handleError, formatErrorForTelegram } from './errors/error-handler';
 
 // ============================================================================
@@ -36,6 +42,15 @@ let cachedMessageStore: MessageStore | null = null;
 /** Cached credits store instance */
 let cachedCreditsStore: CreditsStore | null = null;
 
+/** Cached topic link store instance */
+let cachedTopicLinkStore: TopicLinkStore | null = null;
+
+/** Cached user group store instance */
+let cachedUserGroupStore: UserGroupStore | null = null;
+
+/** Cached membership service instance */
+let cachedMembershipService: MembershipService | null = null;
+
 /**
  * Reset cached instances (for testing purposes)
  * @internal
@@ -44,6 +59,9 @@ export function resetCachedInstances(): void {
   cachedTelegramClient = null;
   cachedMessageStore = null;
   cachedCreditsStore = null;
+  cachedTopicLinkStore = null;
+  cachedUserGroupStore = null;
+  cachedMembershipService = null;
 }
 
 /**
@@ -77,6 +95,36 @@ function getCreditsStore(): CreditsStore {
 }
 
 /**
+ * Get or create the topic link store (singleton pattern for Lambda reuse)
+ */
+function getTopicLinkStore(): TopicLinkStore {
+  if (!cachedTopicLinkStore) {
+    cachedTopicLinkStore = new DynamoDBTopicLinkStore();
+  }
+  return cachedTopicLinkStore;
+}
+
+/**
+ * Get or create the user group store (singleton pattern for Lambda reuse)
+ */
+function getUserGroupStore(): UserGroupStore {
+  if (!cachedUserGroupStore) {
+    cachedUserGroupStore = new DynamoDBUserGroupStore();
+  }
+  return cachedUserGroupStore;
+}
+
+/**
+ * Get or create the membership service (singleton pattern for Lambda reuse)
+ */
+function getMembershipService(telegramClient: TelegramClient): MembershipService {
+  if (!cachedMembershipService) {
+    cachedMembershipService = createMembershipService(telegramClient);
+  }
+  return cachedMembershipService;
+}
+
+/**
  * Welcome message sent when the bot is added to a group
  * 
  * **Validates: Requirements 1.1, 1.2**
@@ -90,6 +138,8 @@ I help you catch up on missed discussions by generating AI-powered summaries of 
 • \`/summary 2h\` - Summarize the last 2 hours
 • \`/summary 50\` - Summarize the last 50 messages
 • \`/help\` - Show help and privacy info
+
+💬 *Private Summaries:* DM me and use /link to get private per-group summaries!
 
 *Privacy & Data Usage:*
 📝 I only store text messages temporarily (72 hours)
@@ -308,14 +358,82 @@ export function isCommand(message: Message): boolean {
 }
 
 /**
+ * Handle a callback query from an inline keyboard button press.
+ * Routes to the appropriate handler based on the callback_data prefix.
+ *
+ * @param callbackQuery - The callback query from Telegram
+ * @param telegramClient - The Telegram client
+ * @param topicLinkStore - The topic link store
+ * @param unlinkHandler - The unlink handler for confirm/cancel callbacks
+ */
+export async function handleCallbackQuery(
+  callbackQuery: CallbackQuery,
+  telegramClient: TelegramClient,
+  topicLinkStore: TopicLinkStore,
+  unlinkHandler: ReturnType<typeof createUnlinkHandler>
+): Promise<void> {
+  const { id: callbackQueryId, from, message, data } = callbackQuery;
+
+  if (!data) {
+    await telegramClient.answerCallbackQuery(callbackQueryId, 'No action data.');
+    return;
+  }
+
+  const userId = from.id;
+  const privateChatId = message?.chat.id ?? userId;
+
+  console.log('Handling callback query:', data, 'from user:', userId);
+
+  try {
+    if (data.startsWith('link:')) {
+      // Link callback: user selected a group to link
+      await handleLinkCallback(
+        callbackQueryId,
+        data,
+        userId,
+        privateChatId,
+        telegramClient,
+        topicLinkStore,
+      );
+    } else if (data.startsWith(UNLINK_CONFIRM_PREFIX)) {
+      // Unlink confirm callback: parse userId and topicThreadId from callback data
+      const parts = data.slice(UNLINK_CONFIRM_PREFIX.length).split(':');
+      const cbUserId = parseInt(parts[0], 10);
+      const topicThreadId = parseInt(parts[1], 10);
+
+      if (isNaN(cbUserId) || isNaN(topicThreadId)) {
+        await telegramClient.answerCallbackQuery(callbackQueryId, 'Invalid unlink data.');
+        return;
+      }
+
+      await unlinkHandler.handleConfirm(cbUserId, topicThreadId, privateChatId, callbackQueryId);
+    } else if (data.startsWith(UNLINK_CANCEL_PREFIX)) {
+      // Unlink cancel callback
+      await unlinkHandler.handleCancel(callbackQueryId);
+    } else {
+      await telegramClient.answerCallbackQuery(callbackQueryId, 'Unknown action.');
+    }
+  } catch (error) {
+    console.error('Error handling callback query:', error);
+    try {
+      await telegramClient.answerCallbackQuery(callbackQueryId, 'An error occurred.');
+    } catch {
+      // Ignore errors when answering callback query fails
+    }
+  }
+}
+
+/**
  * Main webhook handler function
  * Routes incoming Telegram updates to appropriate handlers
- * 
+ *
  * @param update - The Telegram update to process
  * @param messageStore - The message store instance
  * @param commandRouter - The command router instance
  * @param telegramClient - The Telegram client for sending messages
- * 
+ * @param creditsStore - Optional credits store
+ * @param userGroupStore - Optional user group store for passive tracking
+ *
  * **Validates: Requirements 1.1, 1.2, 2.1, 2.2**
  */
 export async function handleWebhook(
@@ -323,7 +441,8 @@ export async function handleWebhook(
   messageStore: MessageStore,
   commandRouter: CommandRouter,
   telegramClient: TelegramClient,
-  creditsStore?: CreditsStore
+  creditsStore?: CreditsStore,
+  userGroupStore?: UserGroupStore
 ): Promise<void> {
   // Check if we have a message to process
   if (!update.message) {
@@ -345,6 +464,20 @@ export async function handleWebhook(
   } else if (isTextMessage(message)) {
     // Store text messages for later summarization
     await storeMessage(message, messageStore);
+
+    // Passive user-group tracking: record which users are in which groups
+    if (userGroupStore && message.chat.type !== 'private' && message.from) {
+      try {
+        await userGroupStore.trackUserInGroup(
+          message.from.id,
+          message.chat.id,
+          message.chat.title ?? 'Unknown Group'
+        );
+      } catch (error) {
+        // Don't let tracking failures break message storage
+        console.error('Failed to track user in group:', error);
+      }
+    }
   } else {
     // Ignore non-text messages (stickers, media, join/leave notifications)
     // **Validates: Requirements 2.2**
@@ -390,6 +523,23 @@ export async function handler(
     const telegramClient = getTelegramClient();
     const messageStore = getMessageStore();
     const creditsStore = getCreditsStore();
+    const topicLinkStore = getTopicLinkStore();
+    const userGroupStore = getUserGroupStore();
+    const membershipService = getMembershipService(telegramClient);
+
+    // Handle callback queries (inline keyboard button presses) before message routing
+    if (update.callback_query) {
+      // Create unlink handler for callback routing (sendMsg for General topic — no threadId)
+      const generalSendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
+      const unlinkHandler = createUnlinkHandler(generalSendMsg, topicLinkStore, telegramClient);
+
+      await handleCallbackQuery(update.callback_query, telegramClient, topicLinkStore, unlinkHandler);
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ ok: true }),
+      };
+    }
 
     // Bind the forum topic threadId so all responses go to the correct topic
     const threadId = update.message?.message_thread_id;
@@ -414,6 +564,26 @@ export async function handler(
       commandRouter.register('admin', adminHandler);
     }
 
+    // Register /link command handler (private chat only)
+    const linkHandler = createLinkHandler(
+      telegramClient,
+      topicLinkStore,
+      membershipService,
+      async (userId: number) => {
+        const records = await userGroupStore.getUserGroups(userId);
+        return records.map(r => ({ chatId: r.groupChatId, title: r.groupTitle }));
+      }
+    );
+    commandRouter.register('link', linkHandler);
+
+    // Register /unlink command handler (private chat topic only)
+    const unlinkHandler = createUnlinkHandler(sendMsg, topicLinkStore, telegramClient);
+    commandRouter.register('unlink', unlinkHandler);
+
+    // Register /groups command handler (private chat only)
+    const groupsHandler = createGroupsHandler(sendMsg, topicLinkStore);
+    commandRouter.register('groups', groupsHandler);
+
     // Register /summary command handler
     if (isAIProviderConfigured()) {
       const providerType = getProviderTypeFromEnv();
@@ -428,7 +598,8 @@ export async function handler(
           const rawSummary = await summaryEngine.generateSummary(chatId, range, threadId);
           return summaryFormatter.format(rawSummary);
         },
-        creditsStore
+        creditsStore,
+        { topicLinkStore, membershipService, telegramClient }
       );
       commandRouter.register('summary', summaryHandler);
     } else {
@@ -436,7 +607,7 @@ export async function handler(
     }
 
     // Process the webhook update
-    await handleWebhook(update, messageStore, commandRouter, telegramClient, creditsStore);
+    await handleWebhook(update, messageStore, commandRouter, telegramClient, creditsStore, userGroupStore);
 
     // Return success response to Telegram
     // Telegram expects a 200 response to acknowledge receipt

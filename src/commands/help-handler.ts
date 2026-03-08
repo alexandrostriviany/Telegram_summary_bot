@@ -38,6 +38,16 @@ export const HELP_MESSAGE = `📚 *Telegram Summary Bot Help*
 • \`/credits\` - Show remaining daily credits
 • \`/help\` - Show this help message
 
+💬 *Private Summaries (DM Commands)*
+
+Get private per-group summaries delivered to organized topics in your DM with the bot:
+
+• \`/link\` - Link a group to a private topic (shows available groups)
+• \`/unlink\` - Remove a group link (use inside a linked topic)
+• \`/groups\` - List all your linked groups
+
+Once linked, open the group's topic and use \`/summary\` as usual — the summary is delivered privately.
+
 📝 *Usage Examples*
 
 1️⃣ *Catch up on recent discussions:*
@@ -123,6 +133,16 @@ export function getPlainTextHelpMessage(): string {
 • /summary 50 - Summarize the last 50 messages
 • /credits - Show remaining daily credits
 • /help - Show this help message
+
+💬 Private Summaries (DM Commands)
+
+Get private per-group summaries delivered to organized topics in your DM with the bot:
+
+• /link - Link a group to a private topic (shows available groups)
+• /unlink - Remove a group link (use inside a linked topic)
+• /groups - List all your linked groups
+
+Once linked, open the group's topic and use /summary as usual — the summary is delivered privately.
 
 📝 Usage Examples
 

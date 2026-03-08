@@ -13,7 +13,7 @@
 
 /**
  * Represents an incoming update from Telegram's webhook
- * 
+ *
  * @see https://core.telegram.org/bots/api#update
  */
 export interface TelegramUpdate {
@@ -21,6 +21,8 @@ export interface TelegramUpdate {
   update_id: number;
   /** New incoming message of any kind (text, photo, sticker, etc.) */
   message?: Message;
+  /** Callback query from an inline keyboard button press */
+  callback_query?: CallbackQuery;
 }
 
 /**
@@ -68,6 +70,11 @@ export interface Message {
    * (e.g., user has privacy settings that hide their account).
    */
   forward_sender_name?: string;
+  /**
+   * True if the message is sent to a forum topic.
+   * Present when the message belongs to a topic in a forum-enabled chat.
+   */
+  is_topic_message?: boolean;
 }
 
 /**
@@ -114,6 +121,76 @@ export interface User {
   username?: string;
   /** User's first name */
   first_name: string;
+}
+
+/**
+ * Represents a forum topic created in a chat
+ *
+ * @see https://core.telegram.org/bots/api#forumtopic
+ */
+export interface ForumTopic {
+  /** Unique identifier of the forum topic */
+  message_thread_id: number;
+  /** Name of the topic */
+  name: string;
+  /** Color of the topic icon in RGB format */
+  icon_color: number;
+  /** Custom emoji identifier of the topic icon (optional) */
+  icon_custom_emoji_id?: string;
+}
+
+/**
+ * Represents a member of a chat with their membership status
+ *
+ * @see https://core.telegram.org/bots/api#chatmember
+ */
+export interface ChatMember {
+  /** The member's status in the chat */
+  status: 'creator' | 'administrator' | 'member' | 'restricted' | 'left' | 'kicked';
+  /** Information about the user */
+  user: User;
+  /** True if the user is a member of the chat at the moment of the request (for 'restricted' status) */
+  is_member?: boolean;
+}
+
+/**
+ * Represents an incoming callback query from an inline keyboard button press
+ *
+ * @see https://core.telegram.org/bots/api#callbackquery
+ */
+export interface CallbackQuery {
+  /** Unique identifier for this query */
+  id: string;
+  /** Sender of the callback query */
+  from: User;
+  /** Message with the callback button that originated the query (optional) */
+  message?: Message;
+  /** Data associated with the callback button (optional) */
+  data?: string;
+  /** Global identifier, uniquely corresponding to the chat to which the message with the callback button was sent */
+  chat_instance: string;
+}
+
+/**
+ * Represents one button of an inline keyboard
+ *
+ * @see https://core.telegram.org/bots/api#inlinekeyboardbutton
+ */
+export interface InlineKeyboardButton {
+  /** Label text on the button */
+  text: string;
+  /** Data to be sent in a callback query when the button is pressed (optional) */
+  callback_data?: string;
+}
+
+/**
+ * Represents an inline keyboard that appears right next to the message it belongs to
+ *
+ * @see https://core.telegram.org/bots/api#inlinekeyboardmarkup
+ */
+export interface InlineKeyboardMarkup {
+  /** Array of button rows, each represented by an array of InlineKeyboardButton objects */
+  inline_keyboard: InlineKeyboardButton[][];
 }
 
 // ============================================================================

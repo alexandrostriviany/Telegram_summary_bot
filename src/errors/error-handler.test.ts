@@ -23,6 +23,10 @@ import {
   InvalidCommandError,
   TelegramAPIError,
   ConfigurationError,
+  NotGroupMemberError,
+  TopicNotLinkedError,
+  BotNotInGroupError,
+  GroupAlreadyLinkedError,
   handleError,
   getErrorCode,
   getUserFriendlyMessage,
@@ -129,11 +133,81 @@ describe('Custom Error Classes', () => {
   describe('ConfigurationError', () => {
     it('should create error with config key', () => {
       const error = new ConfigurationError('Missing API key', 'OPENAI_API_KEY');
-      
+
       expect(error.name).toBe('ConfigurationError');
       expect(error.message).toBe('Missing API key');
       expect(error.configKey).toBe('OPENAI_API_KEY');
       expect(error.errorCode).toBe(ErrorCode.CONFIGURATION_ERROR);
+    });
+  });
+
+  describe('NotGroupMemberError', () => {
+    it('should create error with group title', () => {
+      const error = new NotGroupMemberError('Dev Team Chat', 123);
+
+      expect(error.name).toBe('NotGroupMemberError');
+      expect(error.message).toBe('You are no longer a member of Dev Team Chat. Summary access has been revoked.');
+      expect(error.errorCode).toBe(ErrorCode.NOT_GROUP_MEMBER);
+      expect(error.groupTitle).toBe('Dev Team Chat');
+      expect(error.userId).toBe(123);
+      expect(error).toBeInstanceOf(BotError);
+    });
+
+    it('should create error without group title', () => {
+      const error = new NotGroupMemberError();
+
+      expect(error.message).toBe('You are no longer a member of this group. Summary access has been revoked.');
+      expect(error.groupTitle).toBeUndefined();
+      expect(error.userId).toBeUndefined();
+    });
+  });
+
+  describe('TopicNotLinkedError', () => {
+    it('should create error with fixed message', () => {
+      const error = new TopicNotLinkedError();
+
+      expect(error.name).toBe('TopicNotLinkedError');
+      expect(error.message).toBe('This topic is not linked to any group. Use /link in the General topic to set one up.');
+      expect(error.errorCode).toBe(ErrorCode.TOPIC_NOT_LINKED);
+      expect(error).toBeInstanceOf(BotError);
+    });
+  });
+
+  describe('BotNotInGroupError', () => {
+    it('should create error with group title', () => {
+      const error = new BotNotInGroupError('Weekend Planners');
+
+      expect(error.name).toBe('BotNotInGroupError');
+      expect(error.message).toBe("I'm no longer a member of Weekend Planners. I can't generate summaries for groups I'm not in.");
+      expect(error.errorCode).toBe(ErrorCode.BOT_NOT_IN_GROUP);
+      expect(error.groupTitle).toBe('Weekend Planners');
+      expect(error).toBeInstanceOf(BotError);
+    });
+
+    it('should create error without group title', () => {
+      const error = new BotNotInGroupError();
+
+      expect(error.message).toBe("I'm no longer a member of this group. I can't generate summaries for groups I'm not in.");
+      expect(error.groupTitle).toBeUndefined();
+    });
+  });
+
+  describe('GroupAlreadyLinkedError', () => {
+    it('should create error with group title', () => {
+      const error = new GroupAlreadyLinkedError('Dev Team Chat');
+
+      expect(error.name).toBe('GroupAlreadyLinkedError');
+      expect(error.message).toBe('Dev Team Chat is already linked to a topic.');
+      expect(error.errorCode).toBe(ErrorCode.GROUP_ALREADY_LINKED);
+      expect(error.groupTitle).toBe('Dev Team Chat');
+      expect(error).toBeInstanceOf(BotError);
+    });
+
+    it('should create error without group title', () => {
+      const error = new GroupAlreadyLinkedError();
+
+      expect(error.message).toBe('This group is already linked to a topic.');
+      expect(error.groupTitle).toBeUndefined();
     });
   });
 });
@@ -151,6 +225,10 @@ describe('getErrorCode', () => {
     expect(getErrorCode(new InvalidCommandError('test'))).toBe(ErrorCode.INVALID_COMMAND);
     expect(getErrorCode(new TelegramAPIError('test'))).toBe(ErrorCode.TELEGRAM_API_ERROR);
     expect(getErrorCode(new ConfigurationError('test'))).toBe(ErrorCode.CONFIGURATION_ERROR);
+    expect(getErrorCode(new NotGroupMemberError('Group'))).toBe(ErrorCode.NOT_GROUP_MEMBER);
+    expect(getErrorCode(new TopicNotLinkedError())).toBe(ErrorCode.TOPIC_NOT_LINKED);
+    expect(getErrorCode(new BotNotInGroupError('Group'))).toBe(ErrorCode.BOT_NOT_IN_GROUP);
+    expect(getErrorCode(new GroupAlreadyLinkedError('Group'))).toBe(ErrorCode.GROUP_ALREADY_LINKED);
   });
 
   it('should detect NoMessagesError by name', () => {
@@ -236,8 +314,32 @@ describe('getUserFriendlyMessage', () => {
 
   it('should return correct message for UNKNOWN_ERROR', () => {
     const message = getUserFriendlyMessage(ErrorCode.UNKNOWN_ERROR);
-    
+
     expect(message).toBe('Something went wrong. Please try again.');
+  });
+
+  it('should return correct message for NOT_GROUP_MEMBER', () => {
+    const message = getUserFriendlyMessage(ErrorCode.NOT_GROUP_MEMBER);
+
+    expect(message).toBe('You are no longer a member of this group. Summary access has been revoked.');
+  });
+
+  it('should return correct message for TOPIC_NOT_LINKED', () => {
+    const message = getUserFriendlyMessage(ErrorCode.TOPIC_NOT_LINKED);
+
+    expect(message).toBe('This topic is not linked to any group. Use /link in the General topic to set one up.');
+  });
+
+  it('should return correct message for BOT_NOT_IN_GROUP', () => {
+    const message = getUserFriendlyMessage(ErrorCode.BOT_NOT_IN_GROUP);
+
+    expect(message).toBe("I'm no longer a member of this group. I can't generate summaries for groups I'm not in.");
+  });
+
+  it('should return correct message for GROUP_ALREADY_LINKED', () => {
+    const message = getUserFriendlyMessage(ErrorCode.GROUP_ALREADY_LINKED);
+
+    expect(message).toBe('This group is already linked to a topic.');
   });
 });
 
@@ -450,6 +552,10 @@ describe('isBotError', () => {
     expect(isBotError(new NoMessagesError())).toBe(true);
     expect(isBotError(new AIProviderError('test'))).toBe(true);
     expect(isBotError(new DynamoDBError('test'))).toBe(true);
+    expect(isBotError(new NotGroupMemberError('Group'))).toBe(true);
+    expect(isBotError(new TopicNotLinkedError())).toBe(true);
+    expect(isBotError(new BotNotInGroupError('Group'))).toBe(true);
+    expect(isBotError(new GroupAlreadyLinkedError('Group'))).toBe(true);
   });
 
   it('should return false for regular errors', () => {
@@ -508,6 +614,22 @@ describe('isRetryableError', () => {
 
   it('should return false for ConfigurationError', () => {
     expect(isRetryableError(new ConfigurationError('test'))).toBe(false);
+  });
+
+  it('should return false for NotGroupMemberError', () => {
+    expect(isRetryableError(new NotGroupMemberError('Group'))).toBe(false);
+  });
+
+  it('should return false for TopicNotLinkedError', () => {
+    expect(isRetryableError(new TopicNotLinkedError())).toBe(false);
+  });
+
+  it('should return false for BotNotInGroupError', () => {
+    expect(isRetryableError(new BotNotInGroupError('Group'))).toBe(false);
+  });
+
+  it('should return false for GroupAlreadyLinkedError', () => {
+    expect(isRetryableError(new GroupAlreadyLinkedError('Group'))).toBe(false);
   });
 });
 

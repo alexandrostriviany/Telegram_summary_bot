@@ -10,6 +10,7 @@ import { APIGatewayProxyEventV2 } from 'aws-lambda';
 import {
   handler,
   handleWebhook,
+  handleCallbackQuery,
   handleBotAdded,
   storeMessage,
   isTextMessage,
@@ -17,11 +18,14 @@ import {
   isCommand,
   getMessageText,
 } from './handler';
-import { TelegramUpdate, Message, StoredMessage } from './types';
+import { TelegramUpdate, Message, CallbackQuery, StoredMessage } from './types';
 import { MessageStore } from './store/message-store';
 import { CreditsStore } from './store/credits-store';
+import { TopicLinkStore } from './store/topic-link-store';
+import { UserGroupStore } from './store/user-group-store';
 import { CommandRouter, createCommandRouter } from './commands/command-router';
 import { TelegramClient } from './telegram/telegram-client';
+import { createUnlinkHandler } from './commands/unlink-handler';
 
 // Mock the fetch function for Telegram API calls
 const mockFetch = jest.fn();
@@ -37,6 +41,13 @@ const mockMessageStore: jest.Mocked<MessageStore> = {
 // Mock TelegramClient
 const mockTelegramClient: jest.Mocked<TelegramClient> = {
   sendMessage: jest.fn().mockResolvedValue(undefined),
+  createForumTopic: jest.fn().mockResolvedValue({ message_thread_id: 1, name: 'test', icon_color: 0 }),
+  deleteForumTopic: jest.fn().mockResolvedValue(undefined),
+  closeForumTopic: jest.fn().mockResolvedValue(undefined),
+  reopenForumTopic: jest.fn().mockResolvedValue(undefined),
+  getChatMember: jest.fn().mockResolvedValue({ status: 'member', user: { id: 0, first_name: '' } }),
+  sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
+  answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
 };
 
 // Mock CreditsStore
@@ -53,6 +64,22 @@ const mockCreditsStore: jest.Mocked<CreditsStore> = {
   setDailyLimit: jest.fn().mockResolvedValue(undefined),
   setChatOwner: jest.fn().mockResolvedValue(undefined),
   getChatOwner: jest.fn().mockResolvedValue(null),
+};
+
+// Mock TopicLinkStore
+const mockTopicLinkStore: jest.Mocked<TopicLinkStore> = {
+  createLink: jest.fn().mockResolvedValue(undefined),
+  getLink: jest.fn().mockResolvedValue(null),
+  getUserLinks: jest.fn().mockResolvedValue([]),
+  getLinkByGroup: jest.fn().mockResolvedValue(null),
+  updateStatus: jest.fn().mockResolvedValue(undefined),
+  deleteLink: jest.fn().mockResolvedValue(undefined),
+};
+
+// Mock UserGroupStore
+const mockUserGroupStore: jest.Mocked<UserGroupStore> = {
+  trackUserInGroup: jest.fn().mockResolvedValue(undefined),
+  getUserGroups: jest.fn().mockResolvedValue([]),
 };
 
 // Mock sendMessage function for CommandRouter
@@ -597,6 +624,234 @@ describe('handleWebhook', () => {
     expect(mockTelegramClient.sendMessage).toHaveBeenCalledTimes(1);
     // Should NOT store the message
     expect(mockMessageStore.store).not.toHaveBeenCalled();
+  });
+
+  it('should track user in group when storing text messages from non-private chats', async () => {
+    const update: TelegramUpdate = {
+      update_id: 8,
+      message: {
+        message_id: 8,
+        chat: { id: -1001234567, type: 'supergroup', title: 'Dev Team' },
+        from: { id: 999, first_name: 'John' },
+        date: Date.now() / 1000,
+        text: 'Hello everyone!',
+      },
+    };
+
+    await handleWebhook(
+      update, mockMessageStore, mockCommandRouter, mockTelegramClient,
+      mockCreditsStore, mockUserGroupStore
+    );
+
+    expect(mockMessageStore.store).toHaveBeenCalledTimes(1);
+    expect(mockUserGroupStore.trackUserInGroup).toHaveBeenCalledWith(
+      999, -1001234567, 'Dev Team'
+    );
+  });
+
+  it('should not track user in group for private chat messages', async () => {
+    const update: TelegramUpdate = {
+      update_id: 9,
+      message: {
+        message_id: 9,
+        chat: { id: 999, type: 'private' },
+        from: { id: 999, first_name: 'John' },
+        date: Date.now() / 1000,
+        text: 'Hello bot',
+      },
+    };
+
+    await handleWebhook(
+      update, mockMessageStore, mockCommandRouter, mockTelegramClient,
+      mockCreditsStore, mockUserGroupStore
+    );
+
+    expect(mockMessageStore.store).toHaveBeenCalledTimes(1);
+    expect(mockUserGroupStore.trackUserInGroup).not.toHaveBeenCalled();
+  });
+
+  it('should not break message storage if user-group tracking fails', async () => {
+    mockUserGroupStore.trackUserInGroup.mockRejectedValueOnce(new Error('DynamoDB error'));
+
+    const update: TelegramUpdate = {
+      update_id: 10,
+      message: {
+        message_id: 10,
+        chat: { id: -1001234567, type: 'group', title: 'Test Group' },
+        from: { id: 999, first_name: 'John' },
+        date: Date.now() / 1000,
+        text: 'Hello everyone!',
+      },
+    };
+
+    // Should not throw even though tracking fails
+    await handleWebhook(
+      update, mockMessageStore, mockCommandRouter, mockTelegramClient,
+      mockCreditsStore, mockUserGroupStore
+    );
+
+    expect(mockMessageStore.store).toHaveBeenCalledTimes(1);
+    expect(mockUserGroupStore.trackUserInGroup).toHaveBeenCalled();
+  });
+
+  it('should use "Unknown Group" when chat title is missing', async () => {
+    const update: TelegramUpdate = {
+      update_id: 11,
+      message: {
+        message_id: 11,
+        chat: { id: -1001234567, type: 'group' },
+        from: { id: 999, first_name: 'John' },
+        date: Date.now() / 1000,
+        text: 'Hello!',
+      },
+    };
+
+    await handleWebhook(
+      update, mockMessageStore, mockCommandRouter, mockTelegramClient,
+      mockCreditsStore, mockUserGroupStore
+    );
+
+    expect(mockUserGroupStore.trackUserInGroup).toHaveBeenCalledWith(
+      999, -1001234567, 'Unknown Group'
+    );
+  });
+});
+
+describe('handleCallbackQuery', () => {
+  it('should answer with "No action data" when data is missing', async () => {
+    const callbackQuery: CallbackQuery = {
+      id: 'cb-1',
+      from: { id: 999, first_name: 'John' },
+      chat_instance: 'test',
+    };
+
+    const unlinkHandler = createUnlinkHandler(mockSendMessage, mockTopicLinkStore, mockTelegramClient);
+    await handleCallbackQuery(callbackQuery, mockTelegramClient, mockTopicLinkStore, unlinkHandler);
+
+    expect(mockTelegramClient.answerCallbackQuery).toHaveBeenCalledWith('cb-1', 'No action data.');
+  });
+
+  it('should route link callbacks to handleLinkCallback', async () => {
+    mockTopicLinkStore.getLinkByGroup.mockResolvedValueOnce(null);
+    mockTelegramClient.createForumTopic.mockResolvedValueOnce({
+      message_thread_id: 42,
+      name: 'Test Group',
+      icon_color: 0,
+    });
+
+    const callbackQuery: CallbackQuery = {
+      id: 'cb-2',
+      from: { id: 999, first_name: 'John' },
+      message: {
+        message_id: 100,
+        chat: { id: 999, type: 'private' },
+        date: Date.now() / 1000,
+      },
+      data: 'link:-1001234567',
+      chat_instance: 'test',
+    };
+
+    const unlinkHandler = createUnlinkHandler(mockSendMessage, mockTopicLinkStore, mockTelegramClient);
+    await handleCallbackQuery(callbackQuery, mockTelegramClient, mockTopicLinkStore, unlinkHandler);
+
+    // Should have created a forum topic
+    expect(mockTelegramClient.createForumTopic).toHaveBeenCalled();
+    // Should have stored the link
+    expect(mockTopicLinkStore.createLink).toHaveBeenCalled();
+    // Should have answered the callback query
+    expect(mockTelegramClient.answerCallbackQuery).toHaveBeenCalledWith('cb-2', 'Group linked!');
+  });
+
+  it('should route unlink confirm callbacks', async () => {
+    mockTopicLinkStore.getLink.mockResolvedValueOnce({
+      userId: 999,
+      topicThreadId: 42,
+      groupChatId: -1001234567,
+      groupTitle: 'Test Group',
+      privateChatId: 999,
+      linkedAt: Date.now(),
+      status: 'active',
+    });
+
+    const callbackQuery: CallbackQuery = {
+      id: 'cb-3',
+      from: { id: 999, first_name: 'John' },
+      message: {
+        message_id: 100,
+        chat: { id: 999, type: 'private' },
+        date: Date.now() / 1000,
+      },
+      data: 'unlink:confirm:999:42',
+      chat_instance: 'test',
+    };
+
+    const unlinkHandler = createUnlinkHandler(mockSendMessage, mockTopicLinkStore, mockTelegramClient);
+    await handleCallbackQuery(callbackQuery, mockTelegramClient, mockTopicLinkStore, unlinkHandler);
+
+    // Should have deleted the link
+    expect(mockTopicLinkStore.deleteLink).toHaveBeenCalledWith(999, 42);
+    // Should have deleted the forum topic
+    expect(mockTelegramClient.deleteForumTopic).toHaveBeenCalledWith(999, 42);
+    // Should have answered the callback query
+    expect(mockTelegramClient.answerCallbackQuery).toHaveBeenCalledWith('cb-3', 'Unlinked successfully.');
+  });
+
+  it('should route unlink cancel callbacks', async () => {
+    const callbackQuery: CallbackQuery = {
+      id: 'cb-4',
+      from: { id: 999, first_name: 'John' },
+      message: {
+        message_id: 100,
+        chat: { id: 999, type: 'private' },
+        date: Date.now() / 1000,
+      },
+      data: 'unlink:cancel:999:42',
+      chat_instance: 'test',
+    };
+
+    const unlinkHandler = createUnlinkHandler(mockSendMessage, mockTopicLinkStore, mockTelegramClient);
+    await handleCallbackQuery(callbackQuery, mockTelegramClient, mockTopicLinkStore, unlinkHandler);
+
+    expect(mockTelegramClient.answerCallbackQuery).toHaveBeenCalledWith('cb-4', 'Unlink cancelled.');
+  });
+
+  it('should answer with "Unknown action" for unrecognized callback data', async () => {
+    const callbackQuery: CallbackQuery = {
+      id: 'cb-5',
+      from: { id: 999, first_name: 'John' },
+      data: 'something:unknown',
+      chat_instance: 'test',
+    };
+
+    const unlinkHandler = createUnlinkHandler(mockSendMessage, mockTopicLinkStore, mockTelegramClient);
+    await handleCallbackQuery(callbackQuery, mockTelegramClient, mockTopicLinkStore, unlinkHandler);
+
+    expect(mockTelegramClient.answerCallbackQuery).toHaveBeenCalledWith('cb-5', 'Unknown action.');
+  });
+
+  it('should handle errors in callback query processing gracefully', async () => {
+    // Make the link callback throw
+    mockTopicLinkStore.getLinkByGroup.mockRejectedValueOnce(new Error('DB error'));
+
+    const callbackQuery: CallbackQuery = {
+      id: 'cb-6',
+      from: { id: 999, first_name: 'John' },
+      message: {
+        message_id: 100,
+        chat: { id: 999, type: 'private' },
+        date: Date.now() / 1000,
+      },
+      data: 'link:-1001234567',
+      chat_instance: 'test',
+    };
+
+    const unlinkHandler = createUnlinkHandler(mockSendMessage, mockTopicLinkStore, mockTelegramClient);
+
+    // Should not throw
+    await handleCallbackQuery(callbackQuery, mockTelegramClient, mockTopicLinkStore, unlinkHandler);
+
+    // Should attempt to answer with error
+    expect(mockTelegramClient.answerCallbackQuery).toHaveBeenCalledWith('cb-6', 'An error occurred.');
   });
 });
 

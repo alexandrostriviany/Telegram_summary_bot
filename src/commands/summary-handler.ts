@@ -11,8 +11,11 @@
 
 import { Message, MessageRange } from '../types';
 import { CommandHandler } from './command-router';
-import { handleError, formatErrorForTelegram, CreditsExhaustedError } from '../errors/error-handler';
+import { handleError, formatErrorForTelegram, CreditsExhaustedError, TopicNotLinkedError } from '../errors/error-handler';
 import { CreditsStore } from '../store/credits-store';
+import { TopicLinkStore } from '../store/topic-link-store';
+import { MembershipService } from '../services/membership-service';
+import { TelegramClient } from '../telegram/telegram-client';
 
 /**
  * Default summary time window in hours when no parameter is provided
@@ -216,10 +219,20 @@ Type /help for more information.`;
  * 
  * **Validates: Requirements 3.1, 3.2, 3.3**
  */
+/**
+ * Optional dependencies for private topic summary flow
+ */
+export interface PrivateTopicDeps {
+  topicLinkStore: TopicLinkStore;
+  membershipService: MembershipService;
+  telegramClient: TelegramClient;
+}
+
 export class SummaryHandler implements CommandHandler {
   private sendMessage: (chatId: number, text: string) => Promise<void>;
   private generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>;
   private creditsStore?: CreditsStore;
+  private privateTopicDeps?: PrivateTopicDeps;
 
   /**
    * Create a new SummaryHandler instance
@@ -227,29 +240,35 @@ export class SummaryHandler implements CommandHandler {
    * @param sendMessage - Function to send messages to Telegram chats
    * @param generateSummary - Function to generate summaries for a chat
    * @param creditsStore - Optional credits store for credit tracking
+   * @param privateTopicDeps - Optional dependencies for private topic summary flow
    */
   constructor(
     sendMessage: (chatId: number, text: string) => Promise<void>,
     generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
-    creditsStore?: CreditsStore
+    creditsStore?: CreditsStore,
+    privateTopicDeps?: PrivateTopicDeps
   ) {
     this.sendMessage = sendMessage;
     this.generateSummary = generateSummary;
     this.creditsStore = creditsStore;
+    this.privateTopicDeps = privateTopicDeps;
   }
 
   /**
    * Execute the /summary command
-   * 
+   *
    * Parses the command arguments to determine the message range,
    * generates a summary, and sends it to the chat.
-   * 
+   *
+   * When called from a private chat topic, the handler:
+   * 1. Looks up the topic link to find the associated group
+   * 2. Verifies the user is still a member of the group
+   * 3. Charges the requesting user's own credits
+   * 4. Generates a summary from the group's messages
+   * 5. Sends the result to the private topic
+   *
    * @param message - The Telegram message containing the command
    * @param args - Array of arguments parsed from the command
-   * 
-   * **Validates: Requirements 3.1** - Default 24h when no parameter
-   * **Validates: Requirements 3.2** - Parse time parameters
-   * **Validates: Requirements 3.3** - Parse count parameters
    */
   async execute(message: Message, args: string[]): Promise<void> {
     const chatId = message.chat.id;
@@ -263,6 +282,92 @@ export class SummaryHandler implements CommandHandler {
       await this.sendMessage(chatId, INVALID_PARAMETER_MESSAGE);
       return;
     }
+
+    // Detect private topic context
+    const isPrivateTopicSummary = message.chat.type === 'private' && !!message.message_thread_id;
+
+    if (isPrivateTopicSummary) {
+      await this.executePrivateTopicSummary(message, range);
+    } else {
+      await this.executeGroupSummary(message, range);
+    }
+  }
+
+  /**
+   * Handle summary request from a private chat topic
+   */
+  private async executePrivateTopicSummary(message: Message, range: MessageRange): Promise<void> {
+    const chatId = message.chat.id;
+    const userId = message.from?.id;
+    const topicThreadId = message.message_thread_id!;
+
+    if (!userId) {
+      await this.sendMessage(chatId, 'Unable to identify the user.');
+      return;
+    }
+
+    if (!this.privateTopicDeps) {
+      await this.sendMessage(chatId, 'Private topic summaries are not configured.');
+      return;
+    }
+
+    const { topicLinkStore, membershipService, telegramClient } = this.privateTopicDeps;
+
+    try {
+      // 1. Look up the topic link to find the associated group
+      const link = await topicLinkStore.getLink(userId, topicThreadId);
+      if (!link) {
+        throw new TopicNotLinkedError();
+      }
+
+      const groupChatId = link.groupChatId;
+
+      // 2. Verify membership
+      const isMember = await membershipService.isGroupMember(groupChatId, userId);
+      if (!isMember) {
+        // Send error message, close topic, update link status
+        await this.sendMessage(
+          chatId,
+          `You are no longer a member of <b>${link.groupTitle}</b>. Summary access has been revoked.`
+        );
+        try {
+          await telegramClient.closeForumTopic(chatId, topicThreadId);
+        } catch (error) {
+          console.error(
+            `Failed to close forum topic (chat=${chatId}, thread=${topicThreadId}):`,
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+        await topicLinkStore.updateStatus(userId, topicThreadId, 'closed');
+        return;
+      }
+
+      // 3. Credit check — user pays their own credits
+      if (this.creditsStore) {
+        const consumed = await this.creditsStore.consumeCredit(userId);
+        if (!consumed) {
+          throw new CreditsExhaustedError(undefined, userId);
+        }
+      }
+
+      // 4. Generate summary using groupChatId (NOT the private chat ID)
+      //    Do NOT pass threadId — we want all group messages, not filtered by topic
+      const summary = await this.generateSummary(groupChatId, range);
+
+      // 5. Send result to the private chat topic (sendMessage already has the chatId bound)
+      await this.sendMessage(chatId, summary);
+    } catch (error) {
+      const errorResponse = handleError(error instanceof Error ? error : new Error(String(error)));
+      const userMessage = formatErrorForTelegram(errorResponse);
+      await this.sendMessage(chatId, userMessage);
+    }
+  }
+
+  /**
+   * Handle summary request from a group chat (existing behavior, unchanged)
+   */
+  private async executeGroupSummary(message: Message, range: MessageRange): Promise<void> {
+    const chatId = message.chat.id;
 
     try {
       // Check credits before generating summary
@@ -298,15 +403,18 @@ export class SummaryHandler implements CommandHandler {
 
 /**
  * Create a SummaryHandler with the given dependencies
- * 
+ *
  * @param sendMessage - Function to send messages to Telegram chats
  * @param generateSummary - Function to generate summaries for a chat
+ * @param creditsStore - Optional credits store for credit tracking
+ * @param privateTopicDeps - Optional dependencies for private topic summary flow
  * @returns Configured SummaryHandler instance
  */
 export function createSummaryHandler(
   sendMessage: (chatId: number, text: string) => Promise<void>,
   generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
-  creditsStore?: CreditsStore
+  creditsStore?: CreditsStore,
+  privateTopicDeps?: PrivateTopicDeps
 ): SummaryHandler {
-  return new SummaryHandler(sendMessage, generateSummary, creditsStore);
+  return new SummaryHandler(sendMessage, generateSummary, creditsStore, privateTopicDeps);
 }

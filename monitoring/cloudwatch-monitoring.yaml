@@ -35,6 +35,16 @@ Parameters:
     Description: Name of the DynamoDB chat ownership table
     Default: ''
 
+  TopicLinksTableName:
+    Type: String
+    Description: Name of the DynamoDB topic links table
+    Default: ''
+
+  UserGroupMembershipTableName:
+    Type: String
+    Description: Name of the DynamoDB user-group membership table
+    Default: ''
+
   AdminEmail:
     Type: String
     Description: Admin email address for alarm notifications (leave empty to skip)
@@ -44,6 +54,8 @@ Conditions:
   HasAdminEmail: !Not [!Equals [!Ref AdminEmail, '']]
   HasCreditsTable: !Not [!Equals [!Ref UserCreditsTableName, '']]
   HasOwnershipTable: !Not [!Equals [!Ref ChatOwnershipTableName, '']]
+  HasTopicLinksTable: !Not [!Equals [!Ref TopicLinksTableName, '']]
+  HasUserGroupsTable: !Not [!Equals [!Ref UserGroupMembershipTableName, '']]
 
 Resources:
 
@@ -1045,6 +1057,64 @@ Resources:
       Dimensions:
         - Name: TableName
           Value: !Ref ChatOwnershipTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- Topic Links Table: throttle alarm -------------------------------------
+  TopicLinksTableThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasTopicLinksTable
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-TopicLinksTable-Throttles'
+      AlarmDescription: >
+        Topic links DynamoDB table is being throttled. Private topic
+        link/unlink and summary operations are impacted.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref TopicLinksTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- User Group Membership Table: throttle alarm --------------------------
+  UserGroupsTableThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasUserGroupsTable
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-UserGroupsTable-Throttles'
+      AlarmDescription: >
+        User-group membership DynamoDB table is being throttled. Group
+        discovery for the /link command is impacted.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref UserGroupMembershipTableName
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 1

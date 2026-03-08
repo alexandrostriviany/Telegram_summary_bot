@@ -18,9 +18,13 @@ import {
   parseSummaryParameter,
   SummaryHandler,
   DEFAULT_SUMMARY_HOURS,
+  PrivateTopicDeps,
 } from './summary-handler';
 import { Message } from '../types';
 import { CreditsStore, UserCredits } from '../store/credits-store';
+import { TopicLinkStore, TopicLink } from '../store/topic-link-store';
+import { MembershipService } from '../services/membership-service';
+import { TelegramClient } from '../telegram/telegram-client';
 
 describe('parseTimeParameter', () => {
   describe('valid hour formats', () => {
@@ -546,5 +550,303 @@ describe('SummaryHandler with credits', () => {
     await handler.execute(message, []);
 
     expect(mockCreditsStore.consumeCredit).toHaveBeenCalledWith(999);
+  });
+});
+
+describe('SummaryHandler private topic flow', () => {
+  let mockSendMessage: jest.Mock;
+  let mockGenerateSummary: jest.Mock;
+  let mockCreditsStore: jest.Mocked<CreditsStore>;
+  let mockTopicLinkStore: jest.Mocked<TopicLinkStore>;
+  let mockMembershipService: jest.Mocked<MembershipService>;
+  let mockTelegramClient: jest.Mocked<TelegramClient>;
+  let handler: SummaryHandler;
+
+  const sampleLink: TopicLink = {
+    userId: 100,
+    topicThreadId: 7,
+    groupChatId: -1001234567890,
+    groupTitle: 'Dev Team Chat',
+    privateChatId: 100,
+    linkedAt: 1700000000000,
+    status: 'active',
+  };
+
+  const defaultCredits: UserCredits = {
+    userId: 100,
+    dailyLimit: 10,
+    creditsUsedToday: 3,
+    lastResetDate: '2026-03-06',
+    isPaid: false,
+    createdAt: 1700000000000,
+  };
+
+  beforeEach(() => {
+    mockSendMessage = jest.fn().mockResolvedValue(undefined);
+    mockGenerateSummary = jest.fn().mockResolvedValue('Private summary content');
+    mockCreditsStore = {
+      getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
+      consumeCredit: jest.fn().mockResolvedValue(true),
+      getCredits: jest.fn().mockResolvedValue(defaultCredits),
+      setDailyLimit: jest.fn().mockResolvedValue(undefined),
+      setChatOwner: jest.fn().mockResolvedValue(undefined),
+      getChatOwner: jest.fn().mockResolvedValue(null),
+    };
+    mockTopicLinkStore = {
+      createLink: jest.fn().mockResolvedValue(undefined),
+      getLink: jest.fn().mockResolvedValue(sampleLink),
+      getUserLinks: jest.fn().mockResolvedValue([]),
+      getLinkByGroup: jest.fn().mockResolvedValue(null),
+      updateStatus: jest.fn().mockResolvedValue(undefined),
+      deleteLink: jest.fn().mockResolvedValue(undefined),
+    };
+    mockMembershipService = {
+      isGroupMember: jest.fn().mockResolvedValue(true),
+      getMemberStatus: jest.fn().mockResolvedValue({ isMember: true, status: 'member' }),
+    };
+    mockTelegramClient = {
+      sendMessage: jest.fn().mockResolvedValue(undefined),
+      createForumTopic: jest.fn(),
+      deleteForumTopic: jest.fn().mockResolvedValue(undefined),
+      closeForumTopic: jest.fn().mockResolvedValue(undefined),
+      reopenForumTopic: jest.fn().mockResolvedValue(undefined),
+      getChatMember: jest.fn(),
+      sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
+      answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const privateTopicDeps: PrivateTopicDeps = {
+      topicLinkStore: mockTopicLinkStore,
+      membershipService: mockMembershipService,
+      telegramClient: mockTelegramClient,
+    };
+
+    handler = new SummaryHandler(
+      mockSendMessage,
+      mockGenerateSummary,
+      mockCreditsStore,
+      privateTopicDeps
+    );
+  });
+
+  const createPrivateTopicMessage = (threadId: number = 7): Message => ({
+    message_id: 1,
+    chat: { id: 100, type: 'private' },
+    from: { id: 100, first_name: 'John' },
+    date: Math.floor(Date.now() / 1000),
+    text: '/summary',
+    message_thread_id: threadId,
+  });
+
+  it('should generate summary using groupChatId from topic link', async () => {
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, []);
+
+    expect(mockTopicLinkStore.getLink).toHaveBeenCalledWith(100, 7);
+    expect(mockMembershipService.isGroupMember).toHaveBeenCalledWith(-1001234567890, 100);
+    // generateSummary called with groupChatId, NOT the private chat ID
+    expect(mockGenerateSummary).toHaveBeenCalledWith(
+      -1001234567890,
+      { type: 'time', value: DEFAULT_SUMMARY_HOURS }
+    );
+    // Result sent to the private chat
+    expect(mockSendMessage).toHaveBeenCalledWith(100, 'Private summary content');
+  });
+
+  it('should NOT pass threadId to generateSummary (summarize entire group)', async () => {
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, []);
+
+    // generateSummary should be called with only 2 args (groupChatId, range)
+    // NOT with a threadId — we want all group messages
+    expect(mockGenerateSummary).toHaveBeenCalledWith(
+      -1001234567890,
+      { type: 'time', value: DEFAULT_SUMMARY_HOURS }
+    );
+    expect(mockGenerateSummary.mock.calls[0].length).toBe(2);
+  });
+
+  it('should charge the requesting user credits (not group owner)', async () => {
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, []);
+
+    expect(mockCreditsStore.consumeCredit).toHaveBeenCalledWith(100);
+    // Should NOT call getChatOwner — user pays their own credits
+    expect(mockCreditsStore.getChatOwner).not.toHaveBeenCalled();
+  });
+
+  it('should send error when topic is not linked', async () => {
+    mockTopicLinkStore.getLink.mockResolvedValueOnce(null);
+
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, []);
+
+    expect(mockGenerateSummary).not.toHaveBeenCalled();
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      100,
+      expect.stringContaining('not linked')
+    );
+  });
+
+  it('should revoke access when user is no longer a group member', async () => {
+    mockMembershipService.isGroupMember.mockResolvedValueOnce(false);
+
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, []);
+
+    expect(mockGenerateSummary).not.toHaveBeenCalled();
+    // Should send error about membership
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      100,
+      expect.stringContaining('no longer a member')
+    );
+    // Should close the topic
+    expect(mockTelegramClient.closeForumTopic).toHaveBeenCalledWith(100, 7);
+    // Should update link status to closed
+    expect(mockTopicLinkStore.updateStatus).toHaveBeenCalledWith(100, 7, 'closed');
+    // Should NOT charge credits
+    expect(mockCreditsStore.consumeCredit).not.toHaveBeenCalled();
+  });
+
+  it('should still update link status even if closeForumTopic fails', async () => {
+    mockMembershipService.isGroupMember.mockResolvedValueOnce(false);
+    mockTelegramClient.closeForumTopic.mockRejectedValueOnce(new Error('API error'));
+
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, []);
+
+    expect(mockTopicLinkStore.updateStatus).toHaveBeenCalledWith(100, 7, 'closed');
+  });
+
+  it('should reject when credits are exhausted in private topic', async () => {
+    mockCreditsStore.consumeCredit.mockResolvedValueOnce(false);
+
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, []);
+
+    expect(mockGenerateSummary).not.toHaveBeenCalled();
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      100,
+      expect.stringContaining('Credits')
+    );
+  });
+
+  it('should parse time parameters in private topic context', async () => {
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, ['2h']);
+
+    expect(mockGenerateSummary).toHaveBeenCalledWith(
+      -1001234567890,
+      { type: 'time', value: 2 }
+    );
+  });
+
+  it('should parse count parameters in private topic context', async () => {
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, ['50']);
+
+    expect(mockGenerateSummary).toHaveBeenCalledWith(
+      -1001234567890,
+      { type: 'count', value: 50 }
+    );
+  });
+
+  it('should send invalid parameter error in private topic context', async () => {
+    const message = createPrivateTopicMessage();
+
+    await handler.execute(message, ['invalid']);
+
+    expect(mockGenerateSummary).not.toHaveBeenCalled();
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      100,
+      expect.stringContaining('Invalid parameter format')
+    );
+  });
+
+  it('should handle missing from field in private topic', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 100, type: 'private' },
+      date: Math.floor(Date.now() / 1000),
+      text: '/summary',
+      message_thread_id: 7,
+    };
+
+    await handler.execute(message, []);
+
+    expect(mockSendMessage).toHaveBeenCalledWith(100, 'Unable to identify the user.');
+  });
+
+  it('should handle missing private topic deps gracefully', async () => {
+    // Create handler without private topic deps
+    const handlerWithoutDeps = new SummaryHandler(
+      mockSendMessage,
+      mockGenerateSummary,
+      mockCreditsStore
+    );
+
+    const message = createPrivateTopicMessage();
+
+    await handlerWithoutDeps.execute(message, []);
+
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      100,
+      'Private topic summaries are not configured.'
+    );
+  });
+
+  it('should use group chat flow for private chat WITHOUT thread_id', async () => {
+    // Private chat without message_thread_id = regular private summary (General topic)
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 100, type: 'private' },
+      from: { id: 100, first_name: 'John' },
+      date: Math.floor(Date.now() / 1000),
+      text: '/summary',
+    };
+
+    await handler.execute(message, []);
+
+    // Should use the group/regular flow, not the private topic flow
+    expect(mockTopicLinkStore.getLink).not.toHaveBeenCalled();
+    expect(mockMembershipService.isGroupMember).not.toHaveBeenCalled();
+    // generateSummary called with the private chatId
+    expect(mockGenerateSummary).toHaveBeenCalledWith(
+      100,
+      { type: 'time', value: DEFAULT_SUMMARY_HOURS },
+      undefined
+    );
+  });
+
+  it('should use group chat flow for group messages with thread_id', async () => {
+    // Group chat with a forum topic thread — existing behavior unchanged
+    const message: Message = {
+      message_id: 1,
+      chat: { id: -200, type: 'group' },
+      from: { id: 100, first_name: 'John' },
+      date: Math.floor(Date.now() / 1000),
+      text: '/summary',
+      message_thread_id: 42,
+    };
+
+    await handler.execute(message, []);
+
+    // Should use the group flow — NOT the private topic flow
+    expect(mockTopicLinkStore.getLink).not.toHaveBeenCalled();
+    // generateSummary called with group chatId and thread_id
+    expect(mockGenerateSummary).toHaveBeenCalledWith(
+      -200,
+      { type: 'time', value: DEFAULT_SUMMARY_HOURS },
+      42
+    );
   });
 });
