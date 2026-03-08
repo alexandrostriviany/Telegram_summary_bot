@@ -8,14 +8,15 @@
  */
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { TelegramUpdate, Message, CallbackQuery, StoredMessage, User } from './types';
+import { TelegramUpdate, Message, CallbackQuery, StoredMessage, User, BotUser, InlineKeyboardMarkup } from './types';
 import { DynamoDBMessageStore, MessageStore } from './store/message-store';
 import { CommandRouter, createCommandRouter } from './commands/command-router';
 import { createHelpHandler } from './commands/help-handler';
 import { createSummaryHandler } from './commands/summary-handler';
 import { createCreditsHandler } from './commands/credits-handler';
 import { createAdminHandler } from './commands/admin-handler';
-import { createLinkHandler, handleLinkCallback } from './commands/link-handler';
+import { createLinkHandler, handleLinkCallback, CandidateGroup } from './commands/link-handler';
+import { createStartHandler } from './commands/start-handler';
 import { createUnlinkHandler, UNLINK_CONFIRM_PREFIX, UNLINK_CANCEL_PREFIX } from './commands/unlink-handler';
 import { createGroupsHandler } from './commands/groups-handler';
 import { TelegramClient, createTelegramClient } from './telegram/telegram-client';
@@ -51,6 +52,12 @@ let cachedUserGroupStore: UserGroupStore | null = null;
 /** Cached membership service instance */
 let cachedMembershipService: MembershipService | null = null;
 
+/** Cached bot user info (from getMe) */
+let cachedBotUser: BotUser | null = null;
+
+/** Whether bot commands have been registered with Telegram */
+let commandsRegistered = false;
+
 /**
  * Reset cached instances (for testing purposes)
  * @internal
@@ -62,6 +69,8 @@ export function resetCachedInstances(): void {
   cachedTopicLinkStore = null;
   cachedUserGroupStore = null;
   cachedMembershipService = null;
+  cachedBotUser = null;
+  commandsRegistered = false;
 }
 
 /**
@@ -122,6 +131,67 @@ function getMembershipService(telegramClient: TelegramClient): MembershipService
     cachedMembershipService = createMembershipService(telegramClient);
   }
   return cachedMembershipService;
+}
+
+/**
+ * Get the cached bot user info
+ */
+export function getCachedBotUser(): BotUser | null {
+  return cachedBotUser;
+}
+
+/**
+ * Register bot commands with Telegram for the command menu.
+ * Called once on cold start; failures are non-fatal.
+ */
+async function registerBotCommands(telegramClient: TelegramClient): Promise<void> {
+  if (commandsRegistered) return;
+
+  try {
+    // Register commands for private chats
+    await telegramClient.setMyCommands(
+      [
+        { command: 'start', description: 'Start the bot / onboarding' },
+        { command: 'link', description: 'Link a group to a private topic' },
+        { command: 'unlink', description: 'Remove a group link' },
+        { command: 'groups', description: 'List linked groups' },
+        { command: 'summary', description: 'Summarize recent messages' },
+        { command: 'credits', description: 'Show remaining credits' },
+        { command: 'help', description: 'Show help and usage info' },
+      ],
+      { type: 'all_private_chats' }
+    );
+
+    // Register commands for group chats — minimal
+    await telegramClient.setMyCommands(
+      [
+        { command: 'summary', description: 'Summarize recent messages' },
+        { command: 'start', description: 'Get private summaries in DM' },
+      ],
+      { type: 'all_group_chats' }
+    );
+
+    commandsRegistered = true;
+    console.log('Bot commands registered successfully');
+  } catch (error) {
+    // Non-fatal: command menu is a UX convenience, not critical
+    console.error('Failed to register bot commands:', error);
+  }
+}
+
+/**
+ * Fetch and cache the bot's own user info via getMe.
+ * Called once on cold start; failures are non-fatal.
+ */
+async function fetchBotUser(telegramClient: TelegramClient): Promise<void> {
+  if (cachedBotUser) return;
+
+  try {
+    cachedBotUser = await telegramClient.getMe();
+    console.log('Bot user info cached:', cachedBotUser.username ?? cachedBotUser.first_name);
+  } catch (error) {
+    console.error('Failed to fetch bot user info:', error);
+  }
 }
 
 /**
@@ -204,6 +274,21 @@ export async function handleBotAdded(
 ): Promise<void> {
   console.log('Bot added to group:', message.chat.id, message.chat.title);
   await telegramClient.sendMessage(message.chat.id, WELCOME_MESSAGE);
+
+  // Send a deep-link button for private summaries if bot username is available
+  if (cachedBotUser?.username) {
+    try {
+      const deepLink = `https://t.me/${cachedBotUser.username}?start=link_${message.chat.id}`;
+      await telegramClient.sendInlineKeyboard(
+        message.chat.id,
+        '\u{1F512} Want private summaries? Tap below to set it up in DM.',
+        { inline_keyboard: [[{ text: '\u{1F512} Get private summaries \u2192 DM', url: deepLink }]] },
+      );
+    } catch (error) {
+      // Non-fatal: welcome message was already sent
+      console.error('Failed to send deep-link button:', error);
+    }
+  }
 
   // Record chat ownership — the user who added the bot owns the credits for this chat
   if (creditsStore && message.from) {
@@ -349,12 +434,46 @@ export function isBotAddedEvent(message: Message): boolean {
 
 /**
  * Check if a message is a command
- * 
+ *
  * @param message - The message to check
  * @returns true if the message is a bot command
  */
 export function isCommand(message: Message): boolean {
   return !!message.text && message.text.startsWith('/');
+}
+
+/**
+ * Mapping from persistent reply keyboard button text to command names.
+ * When a user taps a keyboard button, Telegram sends a regular text message.
+ */
+export const KEYBOARD_BUTTON_ROUTES: Record<string, string> = {
+  '\u{1F517} Link Group': 'link',
+  '\u{1F4CB} My Groups': 'groups',
+  '\u{1F4CA} Credits': 'credits',
+  '\u{2753} Help': 'help',
+};
+
+/**
+ * Check if a private-chat text message matches a reply keyboard button.
+ */
+export function isKeyboardButton(message: Message): boolean {
+  if (message.chat.type !== 'private' || !message.text || message.text.startsWith('/')) {
+    return false;
+  }
+  return message.text.trim() in KEYBOARD_BUTTON_ROUTES;
+}
+
+/**
+ * Route a keyboard button press through the command router by
+ * rewriting the message text to the corresponding slash command.
+ */
+export async function handleKeyboardButton(
+  message: Message,
+  commandRouter: CommandRouter
+): Promise<void> {
+  const commandName = KEYBOARD_BUTTON_ROUTES[message.text!.trim()];
+  console.log('Keyboard button pressed:', message.text, '-> /' + commandName);
+  await commandRouter.route({ ...message, text: `/${commandName}` });
 }
 
 /**
@@ -370,7 +489,8 @@ export async function handleCallbackQuery(
   callbackQuery: CallbackQuery,
   telegramClient: TelegramClient,
   topicLinkStore: TopicLinkStore,
-  unlinkHandler: ReturnType<typeof createUnlinkHandler>
+  unlinkHandler: ReturnType<typeof createUnlinkHandler>,
+  commandRouter?: CommandRouter
 ): Promise<void> {
   const { id: callbackQueryId, from, message, data } = callbackQuery;
 
@@ -410,6 +530,18 @@ export async function handleCallbackQuery(
     } else if (data.startsWith(UNLINK_CANCEL_PREFIX)) {
       // Unlink cancel callback
       await unlinkHandler.handleCancel(callbackQueryId);
+    } else if (data.startsWith('menu:') && commandRouter) {
+      // Menu button callback: route to the corresponding command handler
+      const commandName = data.slice('menu:'.length);
+      const fakeMessage: Message = {
+        message_id: message?.message_id ?? 0,
+        chat: message?.chat ?? { id: privateChatId, type: 'private' as const },
+        from,
+        date: Math.floor(Date.now() / 1000),
+        text: `/${commandName}`,
+      };
+      await commandRouter.route(fakeMessage);
+      await telegramClient.answerCallbackQuery(callbackQueryId);
     } else {
       await telegramClient.answerCallbackQuery(callbackQueryId, 'Unknown action.');
     }
@@ -466,6 +598,9 @@ export async function handleWebhook(
       'Use /link to connect this topic to a group chat and get private summaries here.',
       threadId,
     );
+  } else if (isKeyboardButton(message)) {
+    // Handle persistent reply keyboard button presses in private chat
+    await handleKeyboardButton(message, commandRouter);
   } else if (isCommand(message)) {
     // Handle bot commands using the command router
     await handleCommand(message, commandRouter);
@@ -535,23 +670,34 @@ export async function handler(
     const userGroupStore = getUserGroupStore();
     const membershipService = getMembershipService(telegramClient);
 
-    // Handle callback queries (inline keyboard button presses) before message routing
-    if (update.callback_query) {
-      // Create unlink handler for callback routing (sendMsg for General topic — no threadId)
-      const generalSendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
-      const unlinkHandler = createUnlinkHandler(generalSendMsg, topicLinkStore, telegramClient);
-
-      await handleCallbackQuery(update.callback_query, telegramClient, topicLinkStore, unlinkHandler);
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ ok: true }),
-      };
-    }
+    // One-time cold-start setup: register commands and fetch bot info
+    await Promise.all([
+      registerBotCommands(telegramClient),
+      fetchBotUser(telegramClient),
+    ]);
 
     // Bind the forum topic threadId so all responses go to the correct topic
-    const threadId = update.message?.message_thread_id;
-    const sendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
+    const threadId = update.message?.message_thread_id ?? update.callback_query?.message?.message_thread_id;
+    const chatType = update.message?.chat.type ?? update.callback_query?.message?.chat.type;
+    const isPrivateChat = chatType === 'private';
+
+    // In private chats, every bot reply gets inline menu buttons
+    const MENU_KEYBOARD: InlineKeyboardMarkup = {
+      inline_keyboard: [
+        [
+          { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
+          { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
+        ],
+        [
+          { text: '\u{1F4CA} Credits', callback_data: 'menu:credits' },
+          { text: '\u2753 Help', callback_data: 'menu:help' },
+        ],
+      ],
+    };
+
+    const sendMsg = isPrivateChat
+      ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, MENU_KEYBOARD, threadId)
+      : (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
     // Create command router with Telegram client's sendMessage method
     const commandRouter = createCommandRouter(sendMsg);
@@ -572,44 +718,47 @@ export async function handler(
       commandRouter.register('admin', adminHandler);
     }
 
+    // Shared function to retrieve candidate groups for a user
+    const getCandidateGroups = async (userId: number): Promise<CandidateGroup[]> => {
+      // Merge two sources: passive tracking table + all known groups from ownership table
+      const [userRecords, allChats] = await Promise.all([
+        userGroupStore.getUserGroups(userId),
+        creditsStore.getAllChats(),
+      ]);
+
+      // Build a map to deduplicate by groupChatId
+      const groupMap = new Map<number, { chatId: number; title: string }>();
+
+      // Add groups from passive tracking (have accurate titles)
+      for (const r of userRecords) {
+        groupMap.set(r.groupChatId, { chatId: r.groupChatId, title: r.groupTitle });
+      }
+
+      // Add groups from ownership table (bot is present in these)
+      // Fetch real titles via getChat API for groups not in passive tracking
+      for (const chat of allChats) {
+        if (!groupMap.has(chat.chatId)) {
+          try {
+            const chatInfo = await telegramClient.getChat(chat.chatId);
+            groupMap.set(chat.chatId, {
+              chatId: chat.chatId,
+              title: chatInfo.title ?? `Group ${chat.chatId}`,
+            });
+          } catch {
+            // Bot may have been removed from this group — skip it
+          }
+        }
+      }
+
+      return Array.from(groupMap.values());
+    };
+
     // Register /link command handler (private chat only)
     const linkHandler = createLinkHandler(
       telegramClient,
       topicLinkStore,
       membershipService,
-      async (userId: number) => {
-        // Merge two sources: passive tracking table + all known groups from ownership table
-        const [userRecords, allChats] = await Promise.all([
-          userGroupStore.getUserGroups(userId),
-          creditsStore.getAllChats(),
-        ]);
-
-        // Build a map to deduplicate by groupChatId
-        const groupMap = new Map<number, { chatId: number; title: string }>();
-
-        // Add groups from passive tracking (have accurate titles)
-        for (const r of userRecords) {
-          groupMap.set(r.groupChatId, { chatId: r.groupChatId, title: r.groupTitle });
-        }
-
-        // Add groups from ownership table (bot is present in these)
-        // Fetch real titles via getChat API for groups not in passive tracking
-        for (const chat of allChats) {
-          if (!groupMap.has(chat.chatId)) {
-            try {
-              const chatInfo = await telegramClient.getChat(chat.chatId);
-              groupMap.set(chat.chatId, {
-                chatId: chat.chatId,
-                title: chatInfo.title ?? `Group ${chat.chatId}`,
-              });
-            } catch {
-              // Bot may have been removed from this group — skip it
-            }
-          }
-        }
-
-        return Array.from(groupMap.values());
-      }
+      getCandidateGroups,
     );
     commandRouter.register('link', linkHandler);
 
@@ -620,6 +769,15 @@ export async function handler(
     // Register /groups command handler (private chat only)
     const groupsHandler = createGroupsHandler(sendMsg, topicLinkStore);
     commandRouter.register('groups', groupsHandler);
+
+    // Register /start command handler
+    const startHandler = createStartHandler(
+      sendMsg,
+      telegramClient,
+      topicLinkStore,
+      membershipService,
+    );
+    commandRouter.register('start', startHandler);
 
     // Register /summary command handler
     if (isAIProviderConfigured()) {
@@ -636,11 +794,23 @@ export async function handler(
           return summaryFormatter.format(rawSummary);
         },
         creditsStore,
-        { topicLinkStore, membershipService, telegramClient }
+        { topicLinkStore, membershipService, telegramClient },
       );
       commandRouter.register('summary', summaryHandler);
     } else {
       console.warn('AI provider not configured - /summary command will not be available');
+    }
+
+    // Handle callback queries (inline keyboard button presses)
+    if (update.callback_query) {
+      const generalSendMsg = (chatId: number, text: string) => telegramClient.sendMessage(chatId, text);
+      const unlinkHandler = createUnlinkHandler(generalSendMsg, topicLinkStore, telegramClient);
+      await handleCallbackQuery(update.callback_query, telegramClient, topicLinkStore, unlinkHandler, commandRouter);
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ ok: true }),
+      };
     }
 
     // Process the webhook update

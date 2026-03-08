@@ -16,6 +16,8 @@ import {
   isTextMessage,
   isBotAddedEvent,
   isCommand,
+  isKeyboardButton,
+  handleKeyboardButton,
   getMessageText,
 } from './handler';
 import { TelegramUpdate, Message, CallbackQuery, StoredMessage } from './types';
@@ -23,7 +25,7 @@ import { MessageStore } from './store/message-store';
 import { CreditsStore } from './store/credits-store';
 import { TopicLinkStore } from './store/topic-link-store';
 import { UserGroupStore } from './store/user-group-store';
-import { CommandRouter, createCommandRouter } from './commands/command-router';
+import { CommandRouter, CommandHandler, createCommandRouter } from './commands/command-router';
 import { TelegramClient } from './telegram/telegram-client';
 import { createUnlinkHandler } from './commands/unlink-handler';
 
@@ -50,6 +52,9 @@ const mockTelegramClient: jest.Mocked<TelegramClient> = {
   sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
   answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
   getChat: jest.fn().mockResolvedValue({ id: 0, type: 'supergroup', title: 'Test Group' }),
+  setMyCommands: jest.fn().mockResolvedValue(undefined),
+  getMe: jest.fn().mockResolvedValue({ id: 123456789, is_bot: true, first_name: 'SummaryBot' }),
+  sendWithReplyKeyboard: jest.fn().mockResolvedValue(undefined),
 };
 
 // Mock CreditsStore
@@ -275,6 +280,206 @@ describe('isCommand', () => {
       date: Date.now() / 1000,
     };
     expect(isCommand(message)).toBe(false);
+  });
+});
+
+describe('isKeyboardButton', () => {
+  it('should return true for Link Group button in private chat', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{1F517} Link Group',
+    };
+    expect(isKeyboardButton(message)).toBe(true);
+  });
+
+  it('should return true for My Groups button in private chat', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{1F4CB} My Groups',
+    };
+    expect(isKeyboardButton(message)).toBe(true);
+  });
+
+  it('should return true for Credits button in private chat', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{1F4CA} Credits',
+    };
+    expect(isKeyboardButton(message)).toBe(true);
+  });
+
+  it('should return true for Help button in private chat', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{2753} Help',
+    };
+    expect(isKeyboardButton(message)).toBe(true);
+  });
+
+  it('should return false for keyboard button text in group chat', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: -100123, type: 'group' },
+      date: Date.now() / 1000,
+      text: '\u{2753} Help',
+    };
+    expect(isKeyboardButton(message)).toBe(false);
+  });
+
+  it('should return false for a command in private chat', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '/help',
+    };
+    expect(isKeyboardButton(message)).toBe(false);
+  });
+
+  it('should return false for unrecognized text in private chat', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: 'random message',
+    };
+    expect(isKeyboardButton(message)).toBe(false);
+  });
+
+  it('should return false for message without text', () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+    };
+    expect(isKeyboardButton(message)).toBe(false);
+  });
+});
+
+describe('handleKeyboardButton', () => {
+  it('should route Link Group button to /link command', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{1F517} Link Group',
+    };
+
+    const mockHandler: CommandHandler = { execute: jest.fn().mockResolvedValue(undefined) };
+    mockCommandRouter.register('link', mockHandler);
+
+    await handleKeyboardButton(message, mockCommandRouter);
+
+    expect(mockHandler.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '/link' }),
+      []
+    );
+  });
+
+  it('should route My Groups button to /groups command', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{1F4CB} My Groups',
+    };
+
+    const mockHandler: CommandHandler = { execute: jest.fn().mockResolvedValue(undefined) };
+    mockCommandRouter.register('groups', mockHandler);
+
+    await handleKeyboardButton(message, mockCommandRouter);
+
+    expect(mockHandler.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '/groups' }),
+      []
+    );
+  });
+
+  it('should route Credits button to /credits command', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{1F4CA} Credits',
+    };
+
+    const mockHandler: CommandHandler = { execute: jest.fn().mockResolvedValue(undefined) };
+    mockCommandRouter.register('credits', mockHandler);
+
+    await handleKeyboardButton(message, mockCommandRouter);
+
+    expect(mockHandler.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '/credits' }),
+      []
+    );
+  });
+
+  it('should route Help button to /help command', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: 999, type: 'private' },
+      date: Date.now() / 1000,
+      text: '\u{2753} Help',
+    };
+
+    const mockHandler: CommandHandler = { execute: jest.fn().mockResolvedValue(undefined) };
+    mockCommandRouter.register('help', mockHandler);
+
+    await handleKeyboardButton(message, mockCommandRouter);
+
+    expect(mockHandler.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '/help' }),
+      []
+    );
+  });
+});
+
+describe('handleWebhook keyboard button routing', () => {
+  it('should route keyboard button press to command handler instead of storing as text', async () => {
+    const mockHandler: CommandHandler = { execute: jest.fn().mockResolvedValue(undefined) };
+    mockCommandRouter.register('help', mockHandler);
+
+    const update: TelegramUpdate = {
+      update_id: 20,
+      message: {
+        message_id: 20,
+        chat: { id: 999, type: 'private' },
+        from: { id: 999, first_name: 'Alice' },
+        date: Date.now() / 1000,
+        text: '\u{2753} Help',
+      },
+    };
+
+    await handleWebhook(update, mockMessageStore, mockCommandRouter, mockTelegramClient);
+
+    expect(mockHandler.execute).toHaveBeenCalled();
+    expect(mockMessageStore.store).not.toHaveBeenCalled();
+  });
+
+  it('should not intercept keyboard button text in group chats', async () => {
+    const update: TelegramUpdate = {
+      update_id: 21,
+      message: {
+        message_id: 21,
+        chat: { id: -100123, type: 'group' },
+        from: { id: 999, first_name: 'Alice' },
+        date: Date.now() / 1000,
+        text: '\u{2753} Help',
+      },
+    };
+
+    await handleWebhook(update, mockMessageStore, mockCommandRouter, mockTelegramClient);
+
+    // Should be stored as a regular text message, not intercepted as button
+    expect(mockMessageStore.store).toHaveBeenCalledTimes(1);
   });
 });
 

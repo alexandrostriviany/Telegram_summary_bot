@@ -190,6 +190,8 @@ export interface InlineKeyboardButton {
   text: string;
   /** Data to be sent in a callback query when the button is pressed (optional) */
   callback_data?: string;
+  /** HTTP or tg:// URL to be opened when the button is pressed (optional) */
+  url?: string;
 }
 
 /**
@@ -200,6 +202,70 @@ export interface InlineKeyboardButton {
 export interface InlineKeyboardMarkup {
   /** Array of button rows, each represented by an array of InlineKeyboardButton objects */
   inline_keyboard: InlineKeyboardButton[][];
+}
+
+/**
+ * Represents a bot command for the command menu
+ *
+ * @see https://core.telegram.org/bots/api#botcommand
+ */
+export interface BotCommand {
+  /** Text of the command; 1-32 characters */
+  command: string;
+  /** Description of the command; 1-256 characters */
+  description: string;
+}
+
+/**
+ * Represents the scope to which bot commands are applied
+ *
+ * @see https://core.telegram.org/bots/api#botcommandscope
+ */
+export interface BotCommandScope {
+  /** Scope type (e.g., 'all_private_chats', 'all_group_chats') */
+  type: string;
+  /** Chat identifier (for chat-specific scopes) */
+  chat_id?: number;
+}
+
+/**
+ * Represents information about the bot user returned by getMe
+ *
+ * @see https://core.telegram.org/bots/api#user
+ */
+export interface BotUser {
+  /** Unique identifier for this user (bot) */
+  id: number;
+  /** True, this user is a bot */
+  is_bot: boolean;
+  /** Bot's first name */
+  first_name: string;
+  /** Bot's username */
+  username?: string;
+}
+
+/**
+ * Represents one button of a reply keyboard
+ *
+ * @see https://core.telegram.org/bots/api#keyboardbutton
+ */
+export interface KeyboardButton {
+  /** Text of the button */
+  text: string;
+}
+
+/**
+ * Represents a custom keyboard with reply options
+ *
+ * @see https://core.telegram.org/bots/api#replykeyboardmarkup
+ */
+export interface ReplyKeyboardMarkup {
+  /** Array of button rows, each represented by an array of KeyboardButton objects */
+  keyboard: KeyboardButton[][];
+  /** Requests clients to resize the keyboard vertically for optimal fit */
+  resize_keyboard?: boolean;
+  /** Requests clients to always show the keyboard */
+  is_persistent?: boolean;
 }
 
 // ============================================================================

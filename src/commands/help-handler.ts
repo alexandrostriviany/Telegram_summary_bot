@@ -1,11 +1,12 @@
 /**
  * Help Command Handler for Telegram Summary Bot
- * 
- * This module provides the /help command handler that displays available commands,
- * usage examples, and privacy information about data retention.
- * 
+ *
+ * Context-aware /help command: shows compact help in groups,
+ * full help with private commands in DMs.
+ * Uses HTML formatting (matching TelegramClient's parse_mode).
+ *
  * @module commands/help-handler
- * 
+ *
  * **Validates: Requirements 4.1, 4.2**
  */
 
@@ -19,80 +20,56 @@ import { CommandHandler } from './command-router';
 export const DATA_RETENTION_HOURS = 72;
 
 /**
- * Help message text with available commands and privacy information
- * 
- * Formatted for Telegram readability with emojis and clear sections.
- * Uses Markdown formatting (the TelegramClient uses Markdown by default).
- * 
- * **Validates: Requirements 4.1** - List of available commands and their usage
- * **Validates: Requirements 4.2** - Privacy information explaining data retention
+ * Compact help message for group chats.
+ * Shows only group-relevant commands.
  */
-export const HELP_MESSAGE = `📚 *Telegram Summary Bot Help*
+export const GROUP_HELP_MESSAGE = `<b>📚 Summary Bot</b>
 
-🤖 *Available Commands*
+<b>Commands:</b>
+/summary — Summarize last 24h (default)
+/summary 2h — Last 2 hours
+/summary 50 — Last 50 messages
+/credits — Check remaining credits
 
-• \`/summary\` - Summarize messages from the last 24 hours (default)
-• \`/summary 2h\` - Summarize messages from the last 2 hours
-• \`/summary 30m\` - Summarize messages from the last 30 minutes
-• \`/summary 50\` - Summarize the last 50 messages
-• \`/credits\` - Show remaining daily credits
-• \`/help\` - Show this help message
+💡 DM me for private per-group summaries!`;
 
-💬 *Private Summaries (DM Commands)*
+/**
+ * Full help message for private chats.
+ * Includes private commands, linking instructions, and privacy info.
+ */
+export const PRIVATE_HELP_MESSAGE = `<b>📚 Summary Bot Help</b>
 
-Get private per-group summaries delivered to organized topics in your DM with the bot:
+<b>📋 Summary Commands:</b>
+/summary — Summarize last 24h (default)
+/summary 2h — Last 2 hours
+/summary 30m — Last 30 minutes
+/summary 50 — Last 50 messages
 
-• \`/link\` - Link a group to a private topic (shows available groups)
-• \`/unlink\` - Remove a group link (use inside a linked topic)
-• \`/groups\` - List all your linked groups
+<b>🔗 Private Summaries:</b>
+/link — Link a group to this chat
+/unlink — Remove a group link
+/groups — List linked groups
 
-Once linked, open the group's topic and use \`/summary\` as usual — the summary is delivered privately.
+<b>📊 Account:</b>
+/credits — Check remaining credits
 
-📝 *Usage Examples*
+<b>💡 How it works:</b>
+1. Tap <b>🔗 Link Group</b> to connect a group
+2. Open the group's topic
+3. Use /summary for a private summary
 
-1️⃣ *Catch up on recent discussions:*
-   Just type \`/summary\` to get a summary of the last 24 hours.
-
-2️⃣ *Quick update after a meeting:*
-   Use \`/summary 1h\` to see what happened in the last hour.
-
-3️⃣ *Review specific number of messages:*
-   Use \`/summary 100\` to summarize the last 100 messages.
-
-🔒 *Privacy Information*
-
-• Messages are stored temporarily for summarization purposes only.
-• All messages are automatically deleted after ${DATA_RETENTION_HOURS} hours.
-• No message content is shared with third parties.
-• Only text messages are stored; media and stickers are ignored.
-• The bot uses AI to generate summaries but does not retain conversation history beyond the ${DATA_RETENTION_HOURS}-hour window.
-
-💡 *Tips*
-
-• The bot must have Privacy Mode disabled to read group messages.
-• Summaries include topic headers, key points, and open questions.
-• For best results, use the bot in active group chats.
-
-Need more help? Contact the bot administrator.`;
+🔒 Messages auto-delete after ${DATA_RETENTION_HOURS}h. No data is shared.`;
 
 /**
  * Help Command Handler
- * 
- * Handles the /help command by sending a formatted help message with:
- * - List of available commands
- * - Usage examples for each command
- * - Privacy information about data retention
- * 
+ *
+ * Context-aware: sends compact help in group chats, full help in private chats.
+ *
  * **Validates: Requirements 4.1, 4.2**
  */
 export class HelpHandler implements CommandHandler {
   private sendMessage: (chatId: number, text: string) => Promise<void>;
 
-  /**
-   * Create a new HelpHandler instance
-   * 
-   * @param sendMessage - Function to send messages to Telegram chats
-   */
   constructor(
     sendMessage: (chatId: number, text: string) => Promise<void>
   ) {
@@ -101,80 +78,21 @@ export class HelpHandler implements CommandHandler {
 
   /**
    * Execute the /help command
-   * 
-   * Sends the help message to the chat. The TelegramClient uses Markdown
-   * formatting by default.
-   * 
-   * @param message - The Telegram message containing the command
-   * @param args - Array of arguments (ignored for /help command)
-   * 
-   * **Validates: Requirements 4.1** - Respond with list of available commands
-   * **Validates: Requirements 4.2** - Include privacy information
+   *
+   * Checks message.chat.type and sends the appropriate help variant.
    */
   async execute(message: Message, _args: string[]): Promise<void> {
     const chatId = message.chat.id;
-    await this.sendMessage(chatId, HELP_MESSAGE);
+    const helpText = message.chat.type === 'private'
+      ? PRIVATE_HELP_MESSAGE
+      : GROUP_HELP_MESSAGE;
+    await this.sendMessage(chatId, helpText);
   }
 }
 
 /**
- * Get a plain text version of the help message (fallback if Markdown fails)
- * 
- * @returns Plain text help message without Markdown formatting
- */
-export function getPlainTextHelpMessage(): string {
-  return `📚 Telegram Summary Bot Help
-
-🤖 Available Commands
-
-• /summary - Summarize messages from the last 24 hours (default)
-• /summary 2h - Summarize messages from the last 2 hours
-• /summary 30m - Summarize messages from the last 30 minutes
-• /summary 50 - Summarize the last 50 messages
-• /credits - Show remaining daily credits
-• /help - Show this help message
-
-💬 Private Summaries (DM Commands)
-
-Get private per-group summaries delivered to organized topics in your DM with the bot:
-
-• /link - Link a group to a private topic (shows available groups)
-• /unlink - Remove a group link (use inside a linked topic)
-• /groups - List all your linked groups
-
-Once linked, open the group's topic and use /summary as usual — the summary is delivered privately.
-
-📝 Usage Examples
-
-1️⃣ Catch up on recent discussions:
-   Just type /summary to get a summary of the last 24 hours.
-
-2️⃣ Quick update after a meeting:
-   Use /summary 1h to see what happened in the last hour.
-
-3️⃣ Review specific number of messages:
-   Use /summary 100 to summarize the last 100 messages.
-
-🔒 Privacy Information
-
-• Messages are stored temporarily for summarization purposes only.
-• All messages are automatically deleted after ${DATA_RETENTION_HOURS} hours.
-• No message content is shared with third parties.
-• Only text messages are stored; media and stickers are ignored.
-• The bot uses AI to generate summaries but does not retain conversation history beyond the ${DATA_RETENTION_HOURS}-hour window.
-
-💡 Tips
-
-• The bot must have Privacy Mode disabled to read group messages.
-• Summaries include topic headers, key points, and open questions.
-• For best results, use the bot in active group chats.
-
-Need more help? Contact the bot administrator.`;
-}
-
-/**
  * Create a HelpHandler with the given dependencies
- * 
+ *
  * @param sendMessage - Function to send messages to Telegram chats
  * @returns Configured HelpHandler instance
  */

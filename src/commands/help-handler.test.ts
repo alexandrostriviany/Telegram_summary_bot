@@ -1,22 +1,18 @@
 /**
  * Unit Tests for Help Command Handler
- * 
- * Tests the /help command handler functionality including:
- * - Help message content validation
- * - Available commands listing
- * - Privacy information inclusion
- * - Telegram formatting
- * 
+ *
+ * Tests context-aware help: compact in groups, full in private chats.
+ *
  * @module commands/help-handler.test
- * 
+ *
  * **Validates: Requirements 4.1, 4.2**
  */
 
 import {
   HelpHandler,
-  HELP_MESSAGE,
+  GROUP_HELP_MESSAGE,
+  PRIVATE_HELP_MESSAGE,
   DATA_RETENTION_HOURS,
-  getPlainTextHelpMessage,
   createHelpHandler,
 } from './help-handler';
 import { Message } from '../types';
@@ -25,9 +21,12 @@ describe('HelpHandler', () => {
   let mockSendMessage: jest.Mock;
   let handler: HelpHandler;
 
-  const createMockMessage = (chatId: number): Message => ({
+  const createMockMessage = (
+    chatId: number,
+    chatType: 'group' | 'supergroup' | 'private' = 'group'
+  ): Message => ({
     message_id: 1,
-    chat: { id: chatId, type: 'group' },
+    chat: { id: chatId, type: chatType },
     date: Math.floor(Date.now() / 1000),
     text: '/help',
   });
@@ -37,137 +36,124 @@ describe('HelpHandler', () => {
     handler = new HelpHandler(mockSendMessage);
   });
 
-  describe('execute', () => {
-    /**
-     * **Validates: Requirements 4.1, 4.2**
-     */
-    it('should send help message to the chat', async () => {
-      const message = createMockMessage(123);
-      
+  describe('execute — group chat', () => {
+    it('should send GROUP_HELP_MESSAGE in a group chat', async () => {
+      const message = createMockMessage(123, 'group');
+
       await handler.execute(message, []);
 
-      expect(mockSendMessage).toHaveBeenCalledWith(123, HELP_MESSAGE);
+      expect(mockSendMessage).toHaveBeenCalledWith(123, GROUP_HELP_MESSAGE);
     });
 
-    it('should send help message with correct chat ID', async () => {
-      const message = createMockMessage(456);
-      
+    it('should send GROUP_HELP_MESSAGE in a supergroup chat', async () => {
+      const message = createMockMessage(456, 'supergroup');
+
       await handler.execute(message, []);
 
-      expect(mockSendMessage).toHaveBeenCalledWith(456, expect.any(String));
+      expect(mockSendMessage).toHaveBeenCalledWith(456, GROUP_HELP_MESSAGE);
     });
+  });
 
+  describe('execute — private chat', () => {
+    it('should send PRIVATE_HELP_MESSAGE in a private chat', async () => {
+      const message = createMockMessage(789, 'private');
+
+      await handler.execute(message, []);
+
+      expect(mockSendMessage).toHaveBeenCalledWith(789, PRIVATE_HELP_MESSAGE);
+    });
+  });
+
+  describe('execute — general', () => {
     it('should ignore any arguments passed to the command', async () => {
-      const message = createMockMessage(789);
-      
-      await handler.execute(message, ['extra', 'args', 'ignored']);
+      const message = createMockMessage(100, 'private');
 
-      expect(mockSendMessage).toHaveBeenCalledWith(789, HELP_MESSAGE);
+      await handler.execute(message, ['extra', 'args']);
+
+      expect(mockSendMessage).toHaveBeenCalledWith(100, PRIVATE_HELP_MESSAGE);
     });
 
     it('should propagate errors from sendMessage', async () => {
-      const message = createMockMessage(123);
+      const message = createMockMessage(123, 'group');
       mockSendMessage.mockRejectedValue(new Error('Send failed'));
-      
+
       await expect(handler.execute(message, [])).rejects.toThrow('Send failed');
     });
   });
 });
 
-describe('HELP_MESSAGE content', () => {
-  describe('available commands listing', () => {
-    /**
-     * **Validates: Requirements 4.1**
-     */
-    it('should include /summary command', () => {
-      expect(HELP_MESSAGE).toContain('/summary');
-    });
-
-    it('should include /help command', () => {
-      expect(HELP_MESSAGE).toContain('/help');
-    });
-
-    it('should include time-based summary example (e.g., 2h)', () => {
-      expect(HELP_MESSAGE).toMatch(/\/summary\s+\d+h/);
-    });
-
-    it('should include minute-based summary example (e.g., 30m)', () => {
-      expect(HELP_MESSAGE).toMatch(/\/summary\s+\d+m/);
-    });
-
-    it('should include count-based summary example (e.g., 50)', () => {
-      expect(HELP_MESSAGE).toMatch(/\/summary\s+\d+[^hm]/);
-    });
-
-    it('should mention default 24 hours behavior', () => {
-      expect(HELP_MESSAGE).toContain('24 hours');
-    });
+describe('GROUP_HELP_MESSAGE content', () => {
+  it('should include /summary command', () => {
+    expect(GROUP_HELP_MESSAGE).toContain('/summary');
   });
 
-  describe('usage examples', () => {
-    /**
-     * **Validates: Requirements 4.1**
-     */
-    it('should include usage examples section', () => {
-      expect(HELP_MESSAGE).toContain('Usage Examples');
-    });
-
-    it('should explain how to catch up on discussions', () => {
-      expect(HELP_MESSAGE.toLowerCase()).toContain('catch up');
-    });
-
-    it('should provide example for time-based summary', () => {
-      expect(HELP_MESSAGE).toContain('/summary 1h');
-    });
-
-    it('should provide example for count-based summary', () => {
-      expect(HELP_MESSAGE).toContain('/summary 100');
-    });
+  it('should include /credits command', () => {
+    expect(GROUP_HELP_MESSAGE).toContain('/credits');
   });
 
-  describe('privacy information', () => {
-    /**
-     * **Validates: Requirements 4.2**
-     */
-    it('should include privacy section', () => {
-      expect(HELP_MESSAGE).toContain('Privacy');
-    });
-
-    it('should mention data retention period', () => {
-      expect(HELP_MESSAGE).toContain(`${DATA_RETENTION_HOURS} hours`);
-    });
-
-    it('should explain messages are stored temporarily', () => {
-      expect(HELP_MESSAGE.toLowerCase()).toContain('temporarily');
-    });
-
-    it('should mention automatic deletion', () => {
-      expect(HELP_MESSAGE.toLowerCase()).toContain('automatically deleted');
-    });
-
-    it('should mention that only text messages are stored', () => {
-      expect(HELP_MESSAGE.toLowerCase()).toContain('text messages');
-    });
-
-    it('should mention media and stickers are ignored', () => {
-      expect(HELP_MESSAGE.toLowerCase()).toContain('media');
-      expect(HELP_MESSAGE.toLowerCase()).toContain('stickers');
-    });
+  it('should include time-based example', () => {
+    expect(GROUP_HELP_MESSAGE).toContain('/summary 2h');
   });
 
-  describe('Telegram formatting', () => {
-    it('should include emoji for visual appeal', () => {
-      expect(HELP_MESSAGE).toMatch(/[\u{1F300}-\u{1F9FF}]/u);
-    });
+  it('should include count-based example', () => {
+    expect(GROUP_HELP_MESSAGE).toContain('/summary 50');
+  });
 
-    it('should use Markdown bold formatting', () => {
-      expect(HELP_MESSAGE).toContain('*');
-    });
+  it('should mention DM for private summaries', () => {
+    expect(GROUP_HELP_MESSAGE.toLowerCase()).toContain('dm me');
+  });
 
-    it('should use Markdown code formatting for commands', () => {
-      expect(HELP_MESSAGE).toContain('`/summary`');
-      expect(HELP_MESSAGE).toContain('`/help`');
-    });
+  it('should NOT include private-only commands', () => {
+    expect(GROUP_HELP_MESSAGE).not.toContain('/link');
+    expect(GROUP_HELP_MESSAGE).not.toContain('/unlink');
+    expect(GROUP_HELP_MESSAGE).not.toContain('/groups');
+  });
+
+  it('should use HTML formatting', () => {
+    expect(GROUP_HELP_MESSAGE).toContain('<b>');
+    expect(GROUP_HELP_MESSAGE).toContain('</b>');
+  });
+});
+
+describe('PRIVATE_HELP_MESSAGE content', () => {
+  it('should include /summary command', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain('/summary');
+  });
+
+  it('should include time-based examples', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain('/summary 2h');
+    expect(PRIVATE_HELP_MESSAGE).toContain('/summary 30m');
+  });
+
+  it('should include count-based example', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain('/summary 50');
+  });
+
+  it('should include private-only commands', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain('/link');
+    expect(PRIVATE_HELP_MESSAGE).toContain('/unlink');
+    expect(PRIVATE_HELP_MESSAGE).toContain('/groups');
+  });
+
+  it('should include /credits command', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain('/credits');
+  });
+
+  it('should include privacy information with retention period', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain(`${DATA_RETENTION_HOURS}h`);
+  });
+
+  it('should mention data is not shared', () => {
+    expect(PRIVATE_HELP_MESSAGE.toLowerCase()).toContain('no data is shared');
+  });
+
+  it('should include how-it-works instructions', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain('How it works');
+  });
+
+  it('should use HTML formatting', () => {
+    expect(PRIVATE_HELP_MESSAGE).toContain('<b>');
+    expect(PRIVATE_HELP_MESSAGE).toContain('</b>');
   });
 });
 
@@ -177,51 +163,26 @@ describe('DATA_RETENTION_HOURS', () => {
   });
 });
 
-describe('getPlainTextHelpMessage', () => {
-  it('should return a string without Markdown formatting', () => {
-    const plainText = getPlainTextHelpMessage();
-    
-    // Should not contain Markdown bold markers around text
-    expect(plainText).not.toMatch(/\*[^*]+\*/);
-  });
-
-  it('should include all essential information', () => {
-    const plainText = getPlainTextHelpMessage();
-    
-    expect(plainText).toContain('/summary');
-    expect(plainText).toContain('/help');
-    expect(plainText).toContain('Privacy');
-    expect(plainText).toContain(`${DATA_RETENTION_HOURS} hours`);
-  });
-
-  it('should include usage examples', () => {
-    const plainText = getPlainTextHelpMessage();
-    
-    expect(plainText).toContain('/summary 1h');
-    expect(plainText).toContain('/summary 100');
-  });
-});
-
 describe('createHelpHandler', () => {
   it('should create a HelpHandler instance', () => {
     const mockSendMessage = jest.fn();
     const handler = createHelpHandler(mockSendMessage);
-    
+
     expect(handler).toBeInstanceOf(HelpHandler);
   });
 
   it('should use the provided sendMessage function', async () => {
     const mockSendMessage = jest.fn().mockResolvedValue(undefined);
     const handler = createHelpHandler(mockSendMessage);
-    const message = {
+    const message: Message = {
       message_id: 1,
-      chat: { id: 123, type: 'group' as const },
+      chat: { id: 123, type: 'group' },
       date: Math.floor(Date.now() / 1000),
       text: '/help',
     };
-    
+
     await handler.execute(message, []);
-    
+
     expect(mockSendMessage).toHaveBeenCalled();
   });
 });

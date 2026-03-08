@@ -246,7 +246,7 @@ export class SummaryHandler implements CommandHandler {
     sendMessage: (chatId: number, text: string) => Promise<void>,
     generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
     creditsStore?: CreditsStore,
-    privateTopicDeps?: PrivateTopicDeps
+    privateTopicDeps?: PrivateTopicDeps,
   ) {
     this.sendMessage = sendMessage;
     this.generateSummary = generateSummary;
@@ -392,6 +392,7 @@ export class SummaryHandler implements CommandHandler {
       // Generate and send the summary (scoped to forum topic if called from one)
       const summary = await this.generateSummary(chatId, range, message.message_thread_id);
       await this.sendMessage(chatId, summary);
+
     } catch (error) {
       // Use centralized error handling
       const errorResponse = handleError(error instanceof Error ? error : new Error(String(error)));
@@ -414,7 +415,7 @@ export function createSummaryHandler(
   sendMessage: (chatId: number, text: string) => Promise<void>,
   generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
   creditsStore?: CreditsStore,
-  privateTopicDeps?: PrivateTopicDeps
+  privateTopicDeps?: PrivateTopicDeps,
 ): SummaryHandler {
   return new SummaryHandler(sendMessage, generateSummary, creditsStore, privateTopicDeps);
 }
