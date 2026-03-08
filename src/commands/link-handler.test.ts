@@ -317,7 +317,7 @@ describe('handleLinkCallback', () => {
         groupChatId: -1001111111111,
       }),
     );
-    expect(mockClient.answerCallbackQuery).toHaveBeenCalledWith('cb-123', 'Group linked!');
+    expect(mockClient.answerCallbackQuery).toHaveBeenCalledWith('cb-123', 'Group re-linked!');
   });
 
   it('should handle createForumTopic failure', async () => {
