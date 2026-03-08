@@ -2,10 +2,17 @@ name: Tail Logs
 
 on:
   workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Minutes of logs to fetch'
+        required: false
+        default: '10'
 
 jobs:
   logs:
     runs-on: ubuntu-latest
+    environment: production
+
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -23,9 +30,13 @@ jobs:
 
       - name: Tail recent logs
         run: |
+          MINUTES=${{ inputs.minutes || '10' }}
+          MS=$(( MINUTES * 60 * 1000 ))
+          echo "Fetching last ${MINUTES} minutes of logs for ${{ steps.fn.outputs.name }}..."
+          echo "---"
           aws logs filter-log-events \
             --log-group-name "/aws/lambda/${{ steps.fn.outputs.name }}" \
-            --start-time $(( $(date +%s) * 1000 - 300000 )) \
+            --start-time $(( $(date +%s) * 1000 - MS )) \
             --interleaved \
             --query 'events[*].message' \
-            --output text | tail -200
+            --output text | tail -300
