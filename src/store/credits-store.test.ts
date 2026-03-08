@@ -44,6 +44,31 @@ describe('DynamoDBCreditsStore', () => {
     );
   });
 
+  describe('userExists', () => {
+    it('should return true when user record exists', async () => {
+      mockSend.mockResolvedValueOnce({
+        Item: {
+          userId: { N: '12345' },
+          dailyLimit: { N: '10' },
+          creditsUsedToday: { N: '0' },
+          lastResetDate: { S: today },
+          isPaid: { BOOL: false },
+          createdAt: { N: '1700000000000' },
+        },
+      });
+
+      const exists = await store.userExists(12345);
+      expect(exists).toBe(true);
+    });
+
+    it('should return false when user record does not exist', async () => {
+      mockSend.mockResolvedValueOnce({ Item: undefined });
+
+      const exists = await store.userExists(99999);
+      expect(exists).toBe(false);
+    });
+  });
+
   describe('getOrCreateUser', () => {
     it('should return existing user record', async () => {
       mockSend.mockResolvedValueOnce({

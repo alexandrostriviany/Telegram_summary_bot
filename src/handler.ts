@@ -548,6 +548,9 @@ export async function handleCallbackQuery(
         ],
       };
 
+      // Preserve the topic threadId from the original message
+      const cbThreadId = message?.message_thread_id;
+
       // For /link, route normally (it needs to send an inline keyboard with group choices)
       if (commandName === 'link') {
         const fakeMessage: Message = {
@@ -556,6 +559,7 @@ export async function handleCallbackQuery(
           from,
           date: Math.floor(Date.now() / 1000),
           text: '/link',
+          message_thread_id: cbThreadId,
         };
         await commandRouter.route(fakeMessage);
       } else if (originalMessageId) {
@@ -835,6 +839,7 @@ export async function handler(
       telegramClient,
       topicLinkStore,
       membershipService,
+      creditsStore,
     );
     commandRouter.register('start', startHandler);
 

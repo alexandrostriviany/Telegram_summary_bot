@@ -14,6 +14,7 @@ import { CommandHandler } from './command-router';
 import { TelegramClient } from '../telegram/telegram-client';
 import { TopicLinkStore } from '../store/topic-link-store';
 import { MembershipService } from '../services/membership-service';
+import { CreditsStore } from '../store/credits-store';
 
 /**
  * Reply keyboard shown to users in private chat
@@ -59,6 +60,7 @@ export class StartHandler implements CommandHandler {
     private readonly telegramClient: TelegramClient,
     private readonly topicLinkStore: TopicLinkStore,
     private readonly membershipService: MembershipService,
+    private readonly creditsStore?: CreditsStore,
   ) {}
 
   async execute(message: Message, args: string[]): Promise<void> {
@@ -74,6 +76,15 @@ export class StartHandler implements CommandHandler {
     if (args.length > 0 && args[0].startsWith('link_')) {
       await this.handleDeepLink(message, args[0]);
       return;
+    }
+
+    // Create user credit record so they can use /summary in groups
+    if (this.creditsStore && message.from?.id) {
+      try {
+        await this.creditsStore.getOrCreateUser(message.from.id);
+      } catch (error) {
+        console.error('Failed to create user credit record:', error);
+      }
     }
 
     // Send welcome message — menu buttons are appended automatically by sendMsg
@@ -166,6 +177,7 @@ export function createStartHandler(
   telegramClient: TelegramClient,
   topicLinkStore: TopicLinkStore,
   membershipService: MembershipService,
+  creditsStore?: CreditsStore,
 ): StartHandler {
-  return new StartHandler(sendMessage, telegramClient, topicLinkStore, membershipService);
+  return new StartHandler(sendMessage, telegramClient, topicLinkStore, membershipService, creditsStore);
 }

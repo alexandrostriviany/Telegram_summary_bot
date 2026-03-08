@@ -469,6 +469,7 @@ describe('SummaryHandler with credits', () => {
     mockSendMessage = jest.fn().mockResolvedValue(undefined);
     mockGenerateSummary = jest.fn().mockResolvedValue('Summary content');
     mockCreditsStore = {
+      userExists: jest.fn().mockResolvedValue(true),
       getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
       consumeCredit: jest.fn().mockResolvedValue(true),
       getCredits: jest.fn().mockResolvedValue(defaultCredits),
@@ -495,12 +496,24 @@ describe('SummaryHandler with credits', () => {
     expect(mockGenerateSummary).toHaveBeenCalled();
   });
 
-  it('should consume credit from chat owner in group', async () => {
-    mockCreditsStore.getChatOwner.mockResolvedValueOnce({
-      chatId: -200,
-      ownerUserId: 500,
-      addedAt: 1700000000000,
-    });
+  it('should consume credit from sender in group', async () => {
+    const message: Message = {
+      message_id: 1,
+      chat: { id: -200, type: 'group' },
+      from: { id: 999, first_name: 'John' },
+      date: Math.floor(Date.now() / 1000),
+      text: '/summary',
+    };
+
+    await handler.execute(message, []);
+
+    expect(mockCreditsStore.userExists).toHaveBeenCalledWith(999);
+    expect(mockCreditsStore.consumeCredit).toHaveBeenCalledWith(999);
+    expect(mockGenerateSummary).toHaveBeenCalled();
+  });
+
+  it('should prompt user to start bot when userExists returns false in group', async () => {
+    mockCreditsStore.userExists.mockResolvedValueOnce(false);
 
     const message: Message = {
       message_id: 1,
@@ -512,9 +525,13 @@ describe('SummaryHandler with credits', () => {
 
     await handler.execute(message, []);
 
-    expect(mockCreditsStore.getChatOwner).toHaveBeenCalledWith(-200);
-    expect(mockCreditsStore.consumeCredit).toHaveBeenCalledWith(500);
-    expect(mockGenerateSummary).toHaveBeenCalled();
+    expect(mockCreditsStore.userExists).toHaveBeenCalledWith(999);
+    expect(mockCreditsStore.consumeCredit).not.toHaveBeenCalled();
+    expect(mockGenerateSummary).not.toHaveBeenCalled();
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      -200,
+      expect.stringContaining('start the bot first')
+    );
   });
 
   it('should reject when credits are exhausted', async () => {
@@ -535,22 +552,6 @@ describe('SummaryHandler with credits', () => {
       100,
       expect.stringContaining('Credits')
     );
-  });
-
-  it('should fall back to sender when no chat owner in group', async () => {
-    mockCreditsStore.getChatOwner.mockResolvedValueOnce(null);
-
-    const message: Message = {
-      message_id: 1,
-      chat: { id: -200, type: 'group' },
-      from: { id: 999, first_name: 'John' },
-      date: Math.floor(Date.now() / 1000),
-      text: '/summary',
-    };
-
-    await handler.execute(message, []);
-
-    expect(mockCreditsStore.consumeCredit).toHaveBeenCalledWith(999);
   });
 });
 
@@ -586,6 +587,7 @@ describe('SummaryHandler private topic flow', () => {
     mockSendMessage = jest.fn().mockResolvedValue(undefined);
     mockGenerateSummary = jest.fn().mockResolvedValue('Private summary content');
     mockCreditsStore = {
+      userExists: jest.fn().mockResolvedValue(true),
       getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
       consumeCredit: jest.fn().mockResolvedValue(true),
       getCredits: jest.fn().mockResolvedValue(defaultCredits),
