@@ -590,6 +590,20 @@ export async function handleCallbackQuery(
         await editRouter.route(fakeMessage);
       }
       await telegramClient.answerCallbackQuery(callbackQueryId);
+    } else if (data.startsWith('nav:') && commandRouter) {
+      // Nav buttons on summaries — send new message, preserve summary content
+      const navCommand = data.slice('nav:'.length);
+      const navThreadId = message?.message_thread_id;
+      const navMessage: Message = {
+        message_id: message?.message_id ?? 0,
+        chat: message?.chat ?? { id: privateChatId, type: 'private' as const },
+        from,
+        date: Math.floor(Date.now() / 1000),
+        text: `/${navCommand}`,
+        message_thread_id: navThreadId,
+      };
+      await commandRouter.route(navMessage);
+      await telegramClient.answerCallbackQuery(callbackQueryId);
     } else {
       await telegramClient.answerCallbackQuery(callbackQueryId, 'Unknown action.');
     }
@@ -747,8 +761,8 @@ export async function handler(
     const SUMMARY_KEYBOARD: InlineKeyboardMarkup = {
       inline_keyboard: [
         [
-          { text: '\u{1F4CA} Credits', callback_data: 'menu:credits' },
-          { text: '\u2753 Help', callback_data: 'menu:help' },
+          { text: '\u{1F4CA} Credits', callback_data: 'nav:credits' },
+          { text: '\u2753 Help', callback_data: 'nav:help' },
         ],
       ],
     };
