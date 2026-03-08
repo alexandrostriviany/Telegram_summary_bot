@@ -9,7 +9,7 @@
  * **Validates: Requirements 3.1, 3.2, 3.3**
  */
 
-import { Message, MessageRange } from '../types';
+import { Message, MessageRange, InlineKeyboardMarkup } from '../types';
 import { CommandHandler } from './command-router';
 import { handleError, formatErrorForTelegram, CreditsExhaustedError, TopicNotLinkedError } from '../errors/error-handler';
 import { CreditsStore } from '../store/credits-store';
@@ -233,6 +233,7 @@ export class SummaryHandler implements CommandHandler {
   private generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>;
   private creditsStore?: CreditsStore;
   private privateTopicDeps?: PrivateTopicDeps;
+  private botUsername?: string;
 
   /**
    * Create a new SummaryHandler instance
@@ -241,17 +242,20 @@ export class SummaryHandler implements CommandHandler {
    * @param generateSummary - Function to generate summaries for a chat
    * @param creditsStore - Optional credits store for credit tracking
    * @param privateTopicDeps - Optional dependencies for private topic summary flow
+   * @param botUsername - Optional bot username for deep-link inline buttons
    */
   constructor(
     sendMessage: (chatId: number, text: string) => Promise<void>,
     generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
     creditsStore?: CreditsStore,
-    privateTopicDeps?: PrivateTopicDeps
+    privateTopicDeps?: PrivateTopicDeps,
+    botUsername?: string
   ) {
     this.sendMessage = sendMessage;
     this.generateSummary = generateSummary;
     this.creditsStore = creditsStore;
     this.privateTopicDeps = privateTopicDeps;
+    this.botUsername = botUsername;
   }
 
   /**
@@ -392,6 +396,25 @@ export class SummaryHandler implements CommandHandler {
       // Generate and send the summary (scoped to forum topic if called from one)
       const summary = await this.generateSummary(chatId, range, message.message_thread_id);
       await this.sendMessage(chatId, summary);
+
+      // In group chats, append a "Get private summaries" deep-link button
+      if (message.chat.type !== 'private' && this.botUsername && this.privateTopicDeps) {
+        try {
+          const deepLink = `https://t.me/${this.botUsername}?start=link_${chatId}`;
+          const keyboard: InlineKeyboardMarkup = {
+            inline_keyboard: [[{ text: '\u{1F512} Get private summaries \u2192 DM', url: deepLink }]],
+          };
+          await this.privateTopicDeps.telegramClient.sendInlineKeyboard(
+            chatId,
+            '\u{1F4AC} Want summaries delivered privately? Tap the button below to set it up.',
+            keyboard,
+            message.message_thread_id,
+          );
+        } catch (error) {
+          // Non-fatal: the summary was already sent successfully
+          console.error('Failed to send private summary button:', error);
+        }
+      }
     } catch (error) {
       // Use centralized error handling
       const errorResponse = handleError(error instanceof Error ? error : new Error(String(error)));
@@ -414,7 +437,8 @@ export function createSummaryHandler(
   sendMessage: (chatId: number, text: string) => Promise<void>,
   generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
   creditsStore?: CreditsStore,
-  privateTopicDeps?: PrivateTopicDeps
+  privateTopicDeps?: PrivateTopicDeps,
+  botUsername?: string
 ): SummaryHandler {
-  return new SummaryHandler(sendMessage, generateSummary, creditsStore, privateTopicDeps);
+  return new SummaryHandler(sendMessage, generateSummary, creditsStore, privateTopicDeps, botUsername);
 }

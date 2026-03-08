@@ -30,6 +30,9 @@ function createMockTelegramClient(): jest.Mocked<TelegramClient> {
     getChatMember: jest.fn(),
     sendInlineKeyboard: jest.fn().mockResolvedValue(undefined),
     answerCallbackQuery: jest.fn().mockResolvedValue(undefined),
+    setMyCommands: jest.fn().mockResolvedValue(undefined),
+    getMe: jest.fn().mockResolvedValue({ id: 123, is_bot: true, first_name: 'Bot' }),
+    sendWithReplyKeyboard: jest.fn().mockResolvedValue(undefined),
   };
 }
 

@@ -7,7 +7,7 @@
  * @module telegram/telegram-client
  */
 
-import { ForumTopic, ChatMember, InlineKeyboardMarkup } from '../types';
+import { ForumTopic, ChatMember, InlineKeyboardMarkup, BotCommand, BotCommandScope, BotUser, ReplyKeyboardMarkup } from '../types';
 
 /**
  * Maximum message length allowed by Telegram
@@ -112,6 +112,31 @@ export interface TelegramClient {
    * @param text - Optional text to show as a notification to the user
    */
   answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void>;
+
+  /**
+   * Set the list of the bot's commands for a given scope
+   *
+   * @param commands - Array of BotCommand objects
+   * @param scope - Optional scope for which the commands are relevant
+   */
+  setMyCommands(commands: BotCommand[], scope?: BotCommandScope): Promise<void>;
+
+  /**
+   * Get basic information about the bot
+   *
+   * @returns BotUser object with the bot's id, name, and username
+   */
+  getMe(): Promise<BotUser>;
+
+  /**
+   * Send a message with a reply keyboard
+   *
+   * @param chatId - The chat ID to send the message to
+   * @param text - The message text (supports HTML)
+   * @param keyboard - The reply keyboard markup
+   * @param threadId - Optional forum topic thread ID
+   */
+  sendWithReplyKeyboard(chatId: number, text: string, keyboard: ReplyKeyboardMarkup, threadId?: number): Promise<void>;
 }
 
 /**
@@ -326,6 +351,33 @@ export class TelegramBotClient implements TelegramClient {
     const body: Record<string, unknown> = { callback_query_id: callbackQueryId };
     if (text !== undefined) {
       body.text = text;
+    }
+    await this.makeApiCall(url, body);
+  }
+
+  async setMyCommands(commands: BotCommand[], scope?: BotCommandScope): Promise<void> {
+    const params: Record<string, unknown> = { commands };
+    if (scope) {
+      params.scope = scope;
+    }
+    const url = `${this.apiBaseUrl}${this.botToken}/setMyCommands`;
+    await this.makeApiCall(url, params);
+  }
+
+  async getMe(): Promise<BotUser> {
+    return this.callApi<BotUser>('getMe', {});
+  }
+
+  async sendWithReplyKeyboard(chatId: number, text: string, keyboard: ReplyKeyboardMarkup, threadId?: number): Promise<void> {
+    const url = `${this.apiBaseUrl}${this.botToken}/sendMessage`;
+    const body: Record<string, unknown> = {
+      chat_id: chatId,
+      text,
+      reply_markup: keyboard,
+      parse_mode: 'HTML',
+    };
+    if (threadId !== undefined) {
+      body.message_thread_id = threadId;
     }
     await this.makeApiCall(url, body);
   }
