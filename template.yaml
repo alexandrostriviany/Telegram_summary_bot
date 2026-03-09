@@ -73,7 +73,7 @@ Parameters:
   DefaultDailyCredits:
     Type: Number
     Description: Default daily summary credits for free users
-    Default: 10
+    Default: 2
     MinValue: 1
     MaxValue: 1000
 
