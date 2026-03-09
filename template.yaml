@@ -49,7 +49,7 @@ Parameters:
   LLMModel:
     Type: String
     Description: Model name override for the selected AI provider (empty uses provider default)
-    Default: ''
+    Default: 'gemini-3.1-flash-lite-preview'
 
   MessageTTLHours:
     Type: Number
