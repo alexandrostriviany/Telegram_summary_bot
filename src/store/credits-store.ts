@@ -9,22 +9,17 @@
 
 import {
   DynamoDBClient,
-  DynamoDBClientConfig,
   GetItemCommand,
   PutItemCommand,
   UpdateItemCommand,
   ScanCommand,
 } from '@aws-sdk/client-dynamodb';
+import { createDynamoDBClient } from './dynamodb-client';
 
 /**
  * Default daily credit limit for free users
  */
 const DEFAULT_DAILY_LIMIT = 10;
-
-/**
- * Maximum retry attempts for DynamoDB operations
- */
-const MAX_RETRY_ATTEMPTS = 5;
 
 /**
  * User credit record
@@ -131,25 +126,7 @@ export class DynamoDBCreditsStore implements CreditsStore {
     ownershipTableName?: string,
     defaultDailyLimit?: number
   ) {
-    if (client) {
-      this.client = client;
-    } else {
-      const endpoint = process.env.DYNAMODB_ENDPOINT;
-      const clientConfig: DynamoDBClientConfig = {
-        maxAttempts: MAX_RETRY_ATTEMPTS,
-      };
-
-      if (endpoint) {
-        clientConfig.endpoint = endpoint;
-        clientConfig.region = process.env.AWS_REGION || 'us-east-1';
-        clientConfig.credentials = {
-          accessKeyId: 'local',
-          secretAccessKey: 'local',
-        };
-      }
-
-      this.client = new DynamoDBClient(clientConfig);
-    }
+    this.client = createDynamoDBClient(client);
 
     this.creditsTableName = creditsTableName ?? process.env.CREDITS_TABLE ?? 'telegram-summary-user-credits';
     this.ownershipTableName = ownershipTableName ?? process.env.CHAT_OWNERSHIP_TABLE ?? 'telegram-summary-chat-ownership';

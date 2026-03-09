@@ -11,15 +11,10 @@
 
 import {
   DynamoDBClient,
-  DynamoDBClientConfig,
   PutItemCommand,
   QueryCommand,
 } from '@aws-sdk/client-dynamodb';
-
-/**
- * Maximum retry attempts for DynamoDB operations
- */
-const MAX_RETRY_ATTEMPTS = 5;
+import { createDynamoDBClient } from './dynamodb-client';
 
 /**
  * Represents a user's known membership in a group
@@ -64,25 +59,7 @@ export class DynamoDBUserGroupStore implements UserGroupStore {
   private tableName: string;
 
   constructor(client?: DynamoDBClient, tableName?: string) {
-    if (client) {
-      this.client = client;
-    } else {
-      const endpoint = process.env.DYNAMODB_ENDPOINT;
-      const clientConfig: DynamoDBClientConfig = {
-        maxAttempts: MAX_RETRY_ATTEMPTS,
-      };
-
-      if (endpoint) {
-        clientConfig.endpoint = endpoint;
-        clientConfig.region = process.env.AWS_REGION || 'us-east-1';
-        clientConfig.credentials = {
-          accessKeyId: 'local',
-          secretAccessKey: 'local',
-        };
-      }
-
-      this.client = new DynamoDBClient(clientConfig);
-    }
+    this.client = createDynamoDBClient(client);
 
     this.tableName = tableName ?? process.env.USER_GROUPS_TABLE ?? 'telegram-summary-user-groups';
   }

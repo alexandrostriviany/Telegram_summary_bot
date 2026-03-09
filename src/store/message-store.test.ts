@@ -14,6 +14,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { DynamoDBMessageStore, createMessageStore } from './message-store';
 import { StoredMessage, MessageQuery } from '../types';
+import { createMockDynamoDBClient } from '../test-utils/mock-dynamodb';
 
 // Mock the AWS SDK
 jest.mock('@aws-sdk/client-dynamodb', () => {
@@ -37,10 +38,9 @@ describe('DynamoDBMessageStore', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSend = jest.fn();
-    mockClient = {
-      send: mockSend,
-    } as unknown as jest.Mocked<DynamoDBClient>;
+    const mock = createMockDynamoDBClient();
+    mockClient = mock.client;
+    mockSend = mock.send;
     store = new DynamoDBMessageStore(mockClient, tableName, ttlHours);
   });
 

@@ -9,13 +9,13 @@
 
 import {
   DynamoDBClient,
-  DynamoDBClientConfig,
   PutItemCommand,
   QueryCommand,
   BatchWriteItemCommand,
   AttributeValue,
 } from '@aws-sdk/client-dynamodb';
 import { StoredMessage, MessageQuery } from '../types';
+import { createDynamoDBClient } from './dynamodb-client';
 
 /**
  * Default TTL in hours for stored messages
@@ -28,13 +28,6 @@ const DEFAULT_TTL_HOURS = 72;
  * DynamoDB limit is 25 items per batch
  */
 const BATCH_DELETE_SIZE = 25;
-
-/**
- * Maximum retry attempts for DynamoDB operations
- * AWS SDK default is 3, we increase to 5 for better resilience
- * against transient throttling errors
- */
-const MAX_RETRY_ATTEMPTS = 5;
 
 /**
  * Interface for the MessageStore operations
@@ -86,30 +79,7 @@ export class DynamoDBMessageStore implements MessageStore {
     tableName?: string,
     ttlHours?: number
   ) {
-    if (client) {
-      // Use provided client directly
-      this.client = client;
-    } else {
-      // Create client with optional local endpoint support for testing
-      const endpoint = process.env.DYNAMODB_ENDPOINT;
-      const clientConfig: DynamoDBClientConfig = {
-        // Configure retry attempts for better resilience against throttling
-        // AWS SDK default is 3, we use 5 for transient errors
-        maxAttempts: MAX_RETRY_ATTEMPTS,
-      };
-      
-      if (endpoint) {
-        clientConfig.endpoint = endpoint;
-        clientConfig.region = process.env.AWS_REGION || 'us-east-1';
-        // Use dummy credentials for local DynamoDB
-        clientConfig.credentials = {
-          accessKeyId: 'local',
-          secretAccessKey: 'local'
-        };
-      }
-      
-      this.client = new DynamoDBClient(clientConfig);
-    }
+    this.client = createDynamoDBClient(client);
     
     this.tableName = tableName ?? process.env.DYNAMODB_TABLE ?? 'telegram-summary-messages';
     this.ttlHours = ttlHours ?? parseInt(process.env.MESSAGE_TTL_HOURS ?? String(DEFAULT_TTL_HOURS), 10);

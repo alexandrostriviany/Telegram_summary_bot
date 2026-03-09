@@ -11,18 +11,14 @@
 
 import {
   DynamoDBClient,
-  DynamoDBClientConfig,
   GetItemCommand,
   PutItemCommand,
   QueryCommand,
   UpdateItemCommand,
   DeleteItemCommand,
+  AttributeValue,
 } from '@aws-sdk/client-dynamodb';
-
-/**
- * Maximum retry attempts for DynamoDB operations
- */
-const MAX_RETRY_ATTEMPTS = 5;
+import { createDynamoDBClient } from './dynamodb-client';
 
 /**
  * Represents a link between a private chat topic and a group chat
@@ -98,25 +94,7 @@ export class DynamoDBTopicLinkStore implements TopicLinkStore {
   private tableName: string;
 
   constructor(client?: DynamoDBClient, tableName?: string) {
-    if (client) {
-      this.client = client;
-    } else {
-      const endpoint = process.env.DYNAMODB_ENDPOINT;
-      const clientConfig: DynamoDBClientConfig = {
-        maxAttempts: MAX_RETRY_ATTEMPTS,
-      };
-
-      if (endpoint) {
-        clientConfig.endpoint = endpoint;
-        clientConfig.region = process.env.AWS_REGION || 'us-east-1';
-        clientConfig.credentials = {
-          accessKeyId: 'local',
-          secretAccessKey: 'local',
-        };
-      }
-
-      this.client = new DynamoDBClient(clientConfig);
-    }
+    this.client = createDynamoDBClient(client);
 
     this.tableName = tableName ?? process.env.TOPIC_LINKS_TABLE ?? 'telegram-summary-topic-links';
   }
@@ -225,8 +203,7 @@ export class DynamoDBTopicLinkStore implements TopicLinkStore {
     await this.client.send(deleteCommand);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private itemToTopicLink(item: Record<string, any>): TopicLink {
+  private itemToTopicLink(item: Record<string, AttributeValue>): TopicLink {
     return {
       userId: parseInt(item.userId.N!, 10),
       topicThreadId: parseInt(item.topicThreadId.N!, 10),

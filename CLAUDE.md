@@ -45,7 +45,7 @@ npm run register-webhook       # Register webhook URL with Telegram
 
 ## Architecture
 
-**Runtime:** AWS Lambda (Node.js 18, ARM64, 128MB) behind HTTP API Gateway v2 (POST /webhook).
+**Runtime:** AWS Lambda (Node.js 20, ARM64, 256MB) behind HTTP API Gateway v2 (POST /webhook).
 
 **Request flow:** Telegram webhook → API Gateway → Lambda handler (`src/handler.ts`) → routes by update type:
 - Callback query (inline button press) → `handleCallbackQuery()` → link/unlink/menu/nav handlers
@@ -125,7 +125,7 @@ npm run register-webhook       # Register webhook URL with Telegram
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Yes | Bot token from BotFather |
-| `LLM_PROVIDER` | Yes | AI provider: `openai`, `bedrock`, or `gemini` |
+| `LLM_PROVIDER` | Yes | AI provider: `openai`, `bedrock`, or `gemini` (default: `gemini`) |
 | `OPENAI_API_KEY` | If openai | OpenAI API key |
 | `GEMINI_API_KEY` | If gemini | Google Gemini API key |
 | `LLM_MODEL` | No | Model override (provider default if empty) |
@@ -152,7 +152,7 @@ npm run register-webhook       # Register webhook URL with Telegram
 ## Build Details
 
 - esbuild bundles `src/handler.ts` into single `dist/handler.js`
-- Target: Node.js 18, minified with source maps
+- Target: Node.js 20, minified with source maps
 - AWS SDK packages (`@aws-sdk/*`) are externalized (provided by Lambda runtime)
 - `node-fetch` v2 is used (CommonJS-compatible) for Telegram API calls
 

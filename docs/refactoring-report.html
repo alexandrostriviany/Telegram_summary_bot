@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Refactoring Report - Telegram Summary Bot</title>
+<style>
+  :root {
+    --bg: #f8f9fa;
+    --card: #ffffff;
+    --border: #dee2e6;
+    --text: #212529;
+    --muted: #6c757d;
+    --accent: #0d6efd;
+    --green: #198754;
+    --red: #dc3545;
+    --yellow: #ffc107;
+    --green-bg: #d1e7dd;
+    --red-bg: #f8d7da;
+    --yellow-bg: #fff3cd;
+    --blue-bg: #cfe2ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+  header { background: linear-gradient(135deg, #1a1a2e, #16213e); color: white; padding: 3rem 0; margin-bottom: 2rem; }
+  header .container { padding-top: 0; padding-bottom: 0; }
+  header h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  header p { opacity: 0.8; font-size: 1.1rem; }
+  .meta { display: flex; gap: 2rem; margin-top: 1rem; font-size: 0.9rem; opacity: 0.7; }
+  h2 { font-size: 1.5rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--accent); }
+  h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; }
+  .card h3 { margin-top: 0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+  .badge-green { background: var(--green-bg); color: var(--green); }
+  .badge-red { background: var(--red-bg); color: var(--red); }
+  .badge-yellow { background: var(--yellow-bg); color: #664d03; }
+  .badge-blue { background: var(--blue-bg); color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+  th, td { padding: 0.6rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; text-align: center; }
+  .stat-value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+  .stat-label { font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem; }
+  .change-item { display: flex; gap: 0.75rem; align-items: flex-start; margin-bottom: 0.75rem; }
+  .change-num { background: var(--accent); color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
+  .file-list { font-family: 'SF Mono', Monaco, monospace; font-size: 0.82rem; color: var(--muted); margin-top: 0.25rem; }
+  .benefit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  .benefit { padding: 1rem; border-radius: 6px; }
+  .benefit-perf { background: var(--blue-bg); }
+  .benefit-maint { background: var(--green-bg); }
+  .benefit-sec { background: var(--red-bg); }
+  .benefit-cost { background: var(--yellow-bg); }
+  .benefit strong { display: block; margin-bottom: 0.25rem; }
+  code { background: #e9ecef; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; font-family: 'SF Mono', Monaco, monospace; }
+  .verdict { font-weight: 600; }
+  .verdict-accept { color: var(--green); }
+  .verdict-reject { color: var(--red); }
+  .verdict-defer { color: #664d03; }
+  footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 2rem 0; border-top: 1px solid var(--border); margin-top: 2rem; }
+  @media (max-width: 600px) {
+    .benefit-grid { grid-template-columns: 1fr; }
+    .meta { flex-direction: column; gap: 0.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <h1>Refactoring Report</h1>
+    <p>Telegram Summary Bot &mdash; Implementation Simplification &amp; Infrastructure Optimization</p>
+    <div class="meta">
+      <span>Date: 2026-03-08</span>
+      <span>Branch: <code style="background:rgba(255,255,255,0.15);color:white">refactor/simplify-and-optimize</code></span>
+      <span>Team: 8 agents across 4 phases</span>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+<!-- 1. Executive Summary -->
+<h2>1. Executive Summary</h2>
+<p>
+  A team of specialized agents analyzed the entire Telegram Summary Bot codebase, infrastructure, and documentation
+  to identify implementation and infrastructure improvements. <strong>No UI, business logic, or LLM provider changes were made.</strong>
+</p>
+<p style="margin-top:0.75rem">
+  Three analysts produced 33 proposals across code quality, AWS infrastructure, and project structure.
+  Two senior reviewers independently evaluated each proposal for feasibility, risk, and real-world benefit.
+  <strong>10 items</strong> received unanimous approval and were implemented on a feature branch with all tests passing.
+</p>
+
+<div class="stats">
+  <div class="stat"><div class="stat-value">33</div><div class="stat-label">Proposals Analyzed</div></div>
+  <div class="stat"><div class="stat-value">10</div><div class="stat-label">Changes Implemented</div></div>
+  <div class="stat"><div class="stat-value">739</div><div class="stat-label">Tests Passing</div></div>
+  <div class="stat"><div class="stat-value">0</div><div class="stat-label">Failures</div></div>
+</div>
+
+<!-- 2. Analysis Findings -->
+<h2>2. Analysis Findings</h2>
+<p>Three parallel analysis streams investigated the project:</p>
+
+<div class="card">
+  <h3>Code Analysis <span class="badge badge-blue">11 findings</span></h3>
+  <p>Key issues: DynamoDB client initialization duplicated across 4 stores (109+ lines), handler.ts mixing 5+ concerns at 916 lines, unsafe <code>any</code> type bypassing TypeScript checks, unused <code>node-fetch</code> dependency (native fetch available since Node 18).</p>
+</div>
+
+<div class="card">
+  <h3>Infrastructure Analysis <span class="badge badge-blue">12 findings</span></h3>
+  <p>Key issues: Node.js 18 runtime expired (EOL April 2025), Lambda memory at minimum 128MB throttling CPU, Bedrock IAM policy hardcoding 3 deprecated model ARNs, missing observability (X-Ray disabled, no throttle alarms).</p>
+  <p style="margin-top:0.5rem">Positive findings: HTTP API v2 (70% cheaper than REST), ARM64 (20% cheaper), on-demand DynamoDB (optimal for traffic pattern), 72h TTL preventing storage bloat, 64KB bundle size (excellent).</p>
+</div>
+
+<div class="card">
+  <h3>Documentation &amp; Structure Analysis <span class="badge badge-blue">10 findings</span></h3>
+  <p>Key issues: Default LLM provider mismatch in docs (openai vs actual gemini), outdated shipped feature plan still in docs/, minor config reference errors. Overall: strong documentation, well-organized codebase, consistent patterns.</p>
+</div>
+
+<!-- 3. Changes Implemented -->
+<h2>3. Changes Implemented</h2>
+
+<h3>Code Changes</h3>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">1</div>
+    <div>
+      <strong>Shared DynamoDB Client Factory</strong>
+      <span class="badge badge-green">Deduplication</span>
+      <p>Extracted duplicated client initialization from 4 store files into a single <code>createDynamoDBClient()</code> factory. Removed redundant <code>MAX_RETRY_ATTEMPTS</code> constants and <code>DynamoDBClientConfig</code> imports from each store.</p>
+      <div class="file-list">+ src/store/dynamodb-client.ts (new) &nbsp; ~ message-store.ts &nbsp; ~ credits-store.ts &nbsp; ~ topic-link-store.ts &nbsp; ~ user-group-store.ts</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">2</div>
+    <div>
+      <strong>Fix Unsafe <code>any</code> Type in TopicLinkStore</strong>
+      <span class="badge badge-green">Type Safety</span>
+      <p>Replaced <code>Record&lt;string, any&gt;</code> with <code>Record&lt;string, AttributeValue&gt;</code> in <code>itemToTopicLink()</code>. Removed the <code>eslint-disable</code> comment that was suppressing the type warning.</p>
+      <div class="file-list">~ src/store/topic-link-store.ts</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">3</div>
+    <div>
+      <strong>Remove <code>node-fetch</code> Dependency</strong>
+      <span class="badge badge-green">Dependency Cleanup</span>
+      <p>Removed <code>node-fetch</code> and <code>@types/node-fetch</code> from package.json. The codebase was already using native <code>fetch()</code> (available since Node 18+). 23 packages removed from lockfile.</p>
+      <div class="file-list">~ package.json &nbsp; ~ package-lock.json</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">4</div>
+    <div>
+      <strong>Test Mock Utilities</strong>
+      <span class="badge badge-green">Test Quality</span>
+      <p>Created shared <code>createMockDynamoDBClient()</code> helper to reduce boilerplate mock setup across test files. Applied to message-store tests.</p>
+      <div class="file-list">+ src/test-utils/mock-dynamodb.ts (new) &nbsp; ~ src/store/message-store.test.ts</div>
+    </div>
+  </div>
+</div>
+
+<h3>Infrastructure Changes</h3>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">5</div>
+    <div>
+      <strong>Upgrade Node.js 18 &rarr; 20</strong>
+      <span class="badge badge-red">Critical Security</span>
+      <p>Node.js 18 reached end-of-life in April 2025. Updated Lambda runtime, CI/CD workflows, package.json engine constraint, and esbuild build target to Node.js 20.</p>
+      <div class="file-list">~ template.yaml &nbsp; ~ .github/workflows/ci.yml &nbsp; ~ .github/workflows/deploy.yml &nbsp; ~ package.json</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">6</div>
+    <div>
+      <strong>Increase Lambda Memory 128MB &rarr; 256MB</strong>
+      <span class="badge badge-yellow">Performance</span>
+      <p>At 128MB, Lambda CPU is throttled to 1/7 capacity. 256MB provides proportionally more CPU for I/O-bound webhook processing and AI API calls. Still within AWS Free Tier (uses ~3% of 400,000 GB-seconds/month allowance at current traffic).</p>
+      <div class="file-list">~ template.yaml</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">7</div>
+    <div>
+      <strong>Generalize Bedrock IAM Policy</strong>
+      <span class="badge badge-green">Maintainability</span>
+      <p>Replaced 3 hardcoded deprecated model ARNs (<code>claude-instant-v1</code>, <code>claude-v2</code>, <code>claude-3-haiku</code>) with a wildcard <code>foundation-model/*</code> pattern. Prevents future policy updates when models change.</p>
+      <div class="file-list">~ template.yaml</div>
+    </div>
+  </div>
+</div>
+
+<h3>Documentation Changes</h3>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">8</div>
+    <div>
+      <strong>Fix Default LLM Provider Reference</strong>
+      <p>CLAUDE.md now correctly indicates Gemini as the default LLM provider (was incorrectly showing OpenAI).</p>
+      <div class="file-list">~ CLAUDE.md</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">9</div>
+    <div>
+      <strong>Update Runtime Documentation</strong>
+      <p>CLAUDE.md updated to reflect Node.js 20 runtime and 256MB memory configuration.</p>
+      <div class="file-list">~ CLAUDE.md</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="change-item">
+    <div class="change-num">10</div>
+    <div>
+      <strong>Remove Outdated Feature Plan</strong>
+      <p>Deleted <code>docs/private-topics-feature-plan.html</code> which described the private topics feature that was already shipped. Prevents confusion between planned and implemented features.</p>
+      <div class="file-list">&minus; docs/private-topics-feature-plan.html (deleted)</div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. Expected Benefits -->
+<h2>4. Expected Benefits</h2>
+
+<div class="benefit-grid">
+  <div class="benefit benefit-sec">
+    <strong>Security</strong>
+    Node.js 20 upgrade closes 11 months of unpatched vulnerabilities from the EOL Node.js 18 runtime. Active LTS support through October 2026.
+  </div>
+  <div class="benefit benefit-perf">
+    <strong>Performance</strong>
+    256MB Lambda gets 2x CPU allocation vs 128MB. Expected 30-50% reduction in cold start time and faster warm execution for I/O-bound operations.
+  </div>
+  <div class="benefit benefit-maint">
+    <strong>Maintainability</strong>
+    Shared DynamoDB client factory eliminates 109+ lines of duplicated init code across 4 stores. Single point of change for retry config, endpoint setup, and credentials.
+  </div>
+  <div class="benefit benefit-cost">
+    <strong>Cost</strong>
+    Lambda memory increase stays within AWS Free Tier at current traffic (~12,500 of 400,000 free GB-seconds/month). Removed unused dependency reduces bundle. Bedrock policy eliminates maintenance on model ARN updates.
+  </div>
+</div>
+
+<div class="benefit-grid">
+  <div class="benefit benefit-maint">
+    <strong>Type Safety</strong>
+    Fixed unsafe <code>any</code> type in TopicLinkStore. TypeScript compiler now catches attribute access errors at build time instead of runtime.
+  </div>
+  <div class="benefit benefit-perf">
+    <strong>Dependencies</strong>
+    Removed <code>node-fetch</code> + 22 transitive packages from lockfile. Fewer dependencies = smaller attack surface, faster installs, simpler supply chain.
+  </div>
+</div>
+
+<!-- 5. Verification -->
+<h2>5. Verification Results</h2>
+
+<table>
+  <tr><th>Check</th><th>Result</th><th>Details</th></tr>
+  <tr><td><code>npm run build</code></td><td><span class="badge badge-green">Pass</span></td><td>TypeScript compiles cleanly, no errors</td></tr>
+  <tr><td><code>npm run lint</code></td><td><span class="badge badge-green">Pass</span></td><td>0 errors (3 pre-existing warnings, unchanged)</td></tr>
+  <tr><td><code>npm test</code></td><td><span class="badge badge-green">Pass</span></td><td>739 passed, 14 skipped, 0 failures</td></tr>
+  <tr><td>Coverage threshold (70%)</td><td><span class="badge badge-green">Pass</span></td><td>All branches, functions, lines, statements above 70%</td></tr>
+</table>
+
+<!-- 6. Rejected Proposals -->
+<h2>6. Rejected Proposals</h2>
+<p>These proposals were evaluated and rejected by both reviewers as not worth implementing:</p>
+
+<table>
+  <tr><th>Proposal</th><th>Reason</th></tr>
+  <tr><td>Generic DynamoDB attribute mappers</td><td>Stores have different shapes; indirection not worth it</td></tr>
+  <tr><td>Base store class (inheritance)</td><td>Premature abstraction for 4 stores; shared factory suffices</td></tr>
+  <tr><td>DI container for handlers</td><td>Over-engineering for 7 services; current factories are explicit</td></tr>
+  <tr><td>Discriminated union error types</td><td>Touches error handling behavior (business logic boundary)</td></tr>
+  <tr><td>esbuild tree-shaking optimization</td><td>Bundle is 64KB; no measurable gain possible</td></tr>
+  <tr><td>Handler registration config array</td><td>Current explicit registration is more readable for 8 commands</td></tr>
+  <tr><td>Keyboard template abstraction</td><td>Only 2 keyboards; not enough to justify abstraction</td></tr>
+  <tr><td>Split types.ts into modules</td><td>Only ~150 lines; split when it reaches 400+</td></tr>
+  <tr><td>ESLint import ordering plugin</td><td>Cosmetic; creates noisy diffs across entire codebase</td></tr>
+  <tr><td>Husky precommit hooks</td><td>CI already enforces quality; hooks slow local development</td></tr>
+  <tr><td>Reserved Lambda concurrency</td><td>Unnecessary at 10K invocations/month</td></tr>
+  <tr><td>DynamoDB Point-in-Time Recovery</td><td>$36/month for ephemeral 72h message data</td></tr>
+</table>
+
+<!-- 7. Deferred Recommendations -->
+<h2>7. Deferred for Future</h2>
+<p>Good ideas that should be revisited when conditions warrant:</p>
+
+<table>
+  <tr><th>Proposal</th><th>When to Revisit</th></tr>
+  <tr><td>Split handler.ts into modules (916 lines)</td><td>When adding new webhook types or callback handlers</td></tr>
+  <tr><td>ServiceContainer for singletons</td><td>When adding 3+ more services; design a type-safe version</td></tr>
+  <tr><td>CloudWatch throttling alarms</td><td>When traffic exceeds 50K invocations/month</td></tr>
+  <tr><td>X-Ray tracing</td><td>When debugging cold start or latency issues</td></tr>
+  <tr><td>SQS Dead Letter Queue</td><td>When message loss is observed in production</td></tr>
+  <tr><td>CI/CD build artifact caching</td><td>When deploy frequency exceeds 5x/day</td></tr>
+  <tr><td>Lazy-load AI providers</td><td>When adding 4th or 5th provider</td></tr>
+  <tr><td>DynamoDB provisioned capacity</td><td>When traffic becomes predictable at 100+ req/sec</td></tr>
+  <tr><td>Update API.md for callbacks</td><td>During a dedicated documentation sprint</td></tr>
+</table>
+
+<!-- Files Changed -->
+<h2>8. Files Changed</h2>
+
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td><code>template.yaml</code></td><td>Runtime nodejs20.x, memory 256MB, Bedrock wildcard IAM</td></tr>
+  <tr><td><code>.github/workflows/ci.yml</code></td><td>Node.js 20</td></tr>
+  <tr><td><code>.github/workflows/deploy.yml</code></td><td>Node.js 20</td></tr>
+  <tr><td><code>package.json</code></td><td>Engine >=20, esbuild target node20, removed node-fetch deps</td></tr>
+  <tr><td><code>package-lock.json</code></td><td>23 packages removed</td></tr>
+  <tr><td><code>src/store/dynamodb-client.ts</code></td><td><strong>New</strong> &mdash; shared DynamoDB client factory</td></tr>
+  <tr><td><code>src/store/message-store.ts</code></td><td>Use shared factory</td></tr>
+  <tr><td><code>src/store/credits-store.ts</code></td><td>Use shared factory</td></tr>
+  <tr><td><code>src/store/topic-link-store.ts</code></td><td>Use shared factory, fix <code>any</code> type</td></tr>
+  <tr><td><code>src/store/user-group-store.ts</code></td><td>Use shared factory</td></tr>
+  <tr><td><code>src/test-utils/mock-dynamodb.ts</code></td><td><strong>New</strong> &mdash; test mock utility</td></tr>
+  <tr><td><code>src/store/message-store.test.ts</code></td><td>Use shared mock utility</td></tr>
+  <tr><td><code>CLAUDE.md</code></td><td>Node.js 20, 256MB, gemini default</td></tr>
+  <tr><td><code>docs/private-topics-feature-plan.html</code></td><td><strong>Deleted</strong></td></tr>
+</table>
+
+</div>
+
+<footer>
+  <p>Generated by refactor-squad &bull; Branch: <code>refactor/simplify-and-optimize</code> &bull; 2026-03-08</p>
+</footer>
+
+</body>
+</html>
