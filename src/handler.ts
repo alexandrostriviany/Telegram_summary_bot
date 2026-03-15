@@ -151,11 +151,11 @@ async function registerBotCommands(telegramClient: TelegramClient): Promise<void
     // Register commands for private chats
     await telegramClient.setMyCommands(
       [
+        { command: 'summary', description: 'Summarize recent messages' },
         { command: 'start', description: 'Start the bot / onboarding' },
         { command: 'link', description: 'Link a group to a private topic' },
         { command: 'unlink', description: 'Remove a group link' },
         { command: 'groups', description: 'List linked groups' },
-        { command: 'summary', description: 'Summarize recent messages' },
         { command: 'credits', description: 'Show remaining credits' },
         { command: 'help', description: 'Show help and usage info' },
       ],
@@ -538,9 +538,6 @@ export async function handleCallbackQuery(
       const menuKeyboard: InlineKeyboardMarkup = {
         inline_keyboard: [
           [
-            { text: '\u{1F4DD} Summarize recent', callback_data: 'nav:summary 100' },
-          ],
-          [
             { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
             { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
           ],
@@ -749,9 +746,6 @@ export async function handler(
     // Full menu buttons for service messages in private chats
     const FULL_MENU_KEYBOARD: InlineKeyboardMarkup = {
       inline_keyboard: [
-        [
-          { text: '\u{1F4DD} Summarize recent', callback_data: 'nav:summary 100' },
-        ],
         [
           { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
           { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
