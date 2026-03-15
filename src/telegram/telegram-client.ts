@@ -84,7 +84,7 @@ export interface TelegramClient {
    * @param chatId - The chat ID
    * @returns Object with at least id, type, and title fields
    */
-  getChat(chatId: number): Promise<{ id: number; type: string; title?: string }>;
+  getChat(chatId: number): Promise<{ id: number; type: string; title?: string; invite_link?: string }>;
 
   /**
    * Get information about a member of a chat
@@ -334,8 +334,8 @@ export class TelegramBotClient implements TelegramClient {
     await this.makeApiCall(url, { chat_id: chatId, message_thread_id: threadId });
   }
 
-  async getChat(chatId: number): Promise<{ id: number; type: string; title?: string }> {
-    return this.callApi<{ id: number; type: string; title?: string }>('getChat', { chat_id: chatId });
+  async getChat(chatId: number): Promise<{ id: number; type: string; title?: string; invite_link?: string }> {
+    return this.callApi<{ id: number; type: string; title?: string; invite_link?: string }>('getChat', { chat_id: chatId });
   }
 
   async getChatMember(chatId: number, userId: number): Promise<ChatMember> {

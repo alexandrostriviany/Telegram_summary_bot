@@ -55,6 +55,9 @@ let cachedMembershipService: MembershipService | null = null;
 /** Cached bot user info (from getMe) */
 let cachedBotUser: BotUser | null = null;
 
+/** Cached invite links: groupChatId → invite URL (or empty string if unavailable) */
+const inviteLinkCache = new Map<number, string>();
+
 /** Whether bot commands have been registered with Telegram */
 let commandsRegistered = false;
 
@@ -70,6 +73,7 @@ export function resetCachedInstances(): void {
   cachedUserGroupStore = null;
   cachedMembershipService = null;
   cachedBotUser = null;
+  inviteLinkCache.clear();
   commandsRegistered = false;
 }
 
@@ -761,15 +765,37 @@ export async function handler(
       ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, FULL_MENU_KEYBOARD, threadId)
       : (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
+    // Resolve a chat's deep link URL, with Lambda-level caching
+    const getChatLink = async (groupChatId: number): Promise<string | null> => {
+      // Supergroups/channels: use t.me/c/ deep link
+      if (groupChatId <= -1000000000000) {
+        const channelId = -groupChatId - 1000000000000;
+        return `https://t.me/c/${channelId}/999999999`;
+      }
+      // Other groups: try invite link via getChat (cached)
+      if (inviteLinkCache.has(groupChatId)) {
+        return inviteLinkCache.get(groupChatId) || null;
+      }
+      try {
+        const chat = await telegramClient.getChat(groupChatId);
+        const link = chat.invite_link || '';
+        inviteLinkCache.set(groupChatId, link);
+        return link || null;
+      } catch {
+        inviteLinkCache.set(groupChatId, '');
+        return null;
+      }
+    };
+
     // Summary-specific sender with contextual buttons (chat link + summarize 100)
     const sendSummaryMsg = isPrivateChat
-      ? (chatId: number, text: string, targetGroupChatId?: number) => {
+      ? async (chatId: number, text: string, targetGroupChatId?: number) => {
           const buttons: InlineKeyboardButton[] = [];
-          // t.me/c/ links only work for supergroups/channels (bot API ID ≤ -1000000000000)
-          // Per https://core.telegram.org/api/bots/ids: channelId = -botApiId - 1000000000000
-          if (targetGroupChatId && targetGroupChatId <= -1000000000000) {
-            const channelId = -targetGroupChatId - 1000000000000;
-            buttons.push({ text: '\u{1F4AC} Open Chat', url: `https://t.me/c/${channelId}/999999999` });
+          if (targetGroupChatId) {
+            const link = await getChatLink(targetGroupChatId);
+            if (link) {
+              buttons.push({ text: '\u{1F4AC} Open Chat', url: link });
+            }
           }
           buttons.push({ text: '\u{1F4DD} Last 100 messages', callback_data: 'nav:summary 100' });
           const keyboard: InlineKeyboardMarkup = { inline_keyboard: [buttons] };
