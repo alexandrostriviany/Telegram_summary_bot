@@ -765,10 +765,11 @@ export async function handler(
     const sendSummaryMsg = isPrivateChat
       ? (chatId: number, text: string, targetGroupChatId?: number) => {
           const buttons: InlineKeyboardButton[] = [];
-          if (targetGroupChatId) {
-            const chatIdStr = String(targetGroupChatId);
-            const internalId = chatIdStr.startsWith('-100') ? chatIdStr.slice(4) : String(Math.abs(targetGroupChatId));
-            buttons.push({ text: '\u{1F4AC} Open Chat', url: `https://t.me/c/${internalId}/999999999` });
+          // t.me/c/ links only work for supergroups/channels (bot API ID ≤ -1000000000000)
+          // Per https://core.telegram.org/api/bots/ids: channelId = -botApiId - 1000000000000
+          if (targetGroupChatId && targetGroupChatId <= -1000000000000) {
+            const channelId = -targetGroupChatId - 1000000000000;
+            buttons.push({ text: '\u{1F4AC} Open Chat', url: `https://t.me/c/${channelId}/999999999` });
           }
           buttons.push({ text: '\u{1F4DD} Last 100 messages', callback_data: 'nav:summary 100' });
           const keyboard: InlineKeyboardMarkup = { inline_keyboard: [buttons] };
