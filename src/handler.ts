@@ -640,7 +640,8 @@ export async function handleWebhook(
   commandRouter: CommandRouter,
   telegramClient: TelegramClient,
   creditsStore?: CreditsStore,
-  userGroupStore?: UserGroupStore
+  userGroupStore?: UserGroupStore,
+  topicLinkStore?: TopicLinkStore,
 ): Promise<void> {
   // Check if we have a message to process
   if (!update.message) {
@@ -657,13 +658,21 @@ export async function handleWebhook(
     // Bot was added to a group - send welcome message and record ownership
     await handleBotAdded(message, telegramClient, creditsStore);
   } else if (message.forum_topic_created && message.chat.type === 'private' && message.message_thread_id) {
-    // User created a new topic in the private chat — suggest linking it to a group
+    // User created a new topic in the private chat — suggest linking only if not already linked
     const threadId = message.message_thread_id;
-    await telegramClient.sendMessage(
-      message.chat.id,
-      'Use /link to connect this topic to a group chat and get private summaries here.',
-      threadId,
-    );
+    const userId = message.from?.id;
+    let alreadyLinked = false;
+    if (topicLinkStore && userId) {
+      const link = await topicLinkStore.getLink(userId, threadId);
+      alreadyLinked = !!link;
+    }
+    if (!alreadyLinked) {
+      await telegramClient.sendMessage(
+        message.chat.id,
+        'Use /link to connect this topic to a group chat and get private summaries here.',
+        threadId,
+      );
+    }
   } else if (isKeyboardButton(message)) {
     // Handle persistent reply keyboard button presses in private chat
     await handleKeyboardButton(message, commandRouter);
@@ -919,7 +928,7 @@ export async function handler(
     }
 
     // Process the webhook update
-    await handleWebhook(update, messageStore, commandRouter, telegramClient, creditsStore, userGroupStore);
+    await handleWebhook(update, messageStore, commandRouter, telegramClient, creditsStore, userGroupStore, topicLinkStore);
 
     // Return success response to Telegram
     // Telegram expects a 200 response to acknowledge receipt
