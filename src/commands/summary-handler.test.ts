@@ -293,7 +293,7 @@ describe('SummaryHandler', () => {
         type: 'time',
         value: DEFAULT_SUMMARY_HOURS,
       }, undefined);
-      expect(mockSendMessage).toHaveBeenCalledWith(123, '📝 Summary content');
+      expect(mockSendMessage).toHaveBeenCalledWith(123, '📝 Summary content', 123);
     });
   });
 
@@ -660,8 +660,8 @@ describe('SummaryHandler private topic flow', () => {
       -1001234567890,
       { type: 'time', value: DEFAULT_SUMMARY_HOURS }
     );
-    // Result sent to the private chat
-    expect(mockSendMessage).toHaveBeenCalledWith(100, 'Private summary content');
+    // Result sent to the private chat, with groupChatId for keyboard context
+    expect(mockSendMessage).toHaveBeenCalledWith(100, 'Private summary content', -1001234567890);
   });
 
   it('should NOT pass threadId to generateSummary (summarize entire group)', async () => {

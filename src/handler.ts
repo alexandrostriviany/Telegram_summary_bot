@@ -8,7 +8,7 @@
  */
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
-import { TelegramUpdate, Message, CallbackQuery, StoredMessage, User, BotUser, InlineKeyboardMarkup } from './types';
+import { TelegramUpdate, Message, CallbackQuery, StoredMessage, User, BotUser, InlineKeyboardMarkup, InlineKeyboardButton } from './types';
 import { DynamoDBMessageStore, MessageStore } from './store/message-store';
 import { CommandRouter, createCommandRouter } from './commands/command-router';
 import { createHelpHandler } from './commands/help-handler';
@@ -757,23 +757,22 @@ export async function handler(
       ],
     };
 
-    // Minimal buttons for summary messages
-    const SUMMARY_KEYBOARD: InlineKeyboardMarkup = {
-      inline_keyboard: [
-        [
-          { text: '\u{1F4CA} Credits', callback_data: 'nav:credits' },
-          { text: '\u2753 Help', callback_data: 'nav:help' },
-        ],
-      ],
-    };
-
     const sendMsg = isPrivateChat
       ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, FULL_MENU_KEYBOARD, threadId)
       : (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
-    // Summary-specific sender with minimal buttons
+    // Summary-specific sender with contextual buttons (chat link + summarize 100)
     const sendSummaryMsg = isPrivateChat
-      ? (chatId: number, text: string) => telegramClient.sendInlineKeyboard(chatId, text, SUMMARY_KEYBOARD, threadId)
+      ? (chatId: number, text: string, targetGroupChatId?: number) => {
+          const buttons: InlineKeyboardButton[] = [];
+          if (targetGroupChatId) {
+            const positiveId = String(targetGroupChatId).replace(/^-100/, '');
+            buttons.push({ text: '\u{1F4AC} Open Chat', url: `https://t.me/c/${positiveId}/1` });
+          }
+          buttons.push({ text: '\u{1F4DD} Last 100 messages', callback_data: 'nav:summary 100' });
+          const keyboard: InlineKeyboardMarkup = { inline_keyboard: [buttons] };
+          return telegramClient.sendInlineKeyboard(chatId, text, keyboard, threadId);
+        }
       : (chatId: number, text: string) => telegramClient.sendMessage(chatId, text, threadId);
 
     // Create command router with Telegram client's sendMessage method

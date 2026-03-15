@@ -229,21 +229,13 @@ export interface PrivateTopicDeps {
 }
 
 export class SummaryHandler implements CommandHandler {
-  private sendMessage: (chatId: number, text: string) => Promise<void>;
+  private sendMessage: (chatId: number, text: string, targetGroupChatId?: number) => Promise<void>;
   private generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>;
   private creditsStore?: CreditsStore;
   private privateTopicDeps?: PrivateTopicDeps;
 
-  /**
-   * Create a new SummaryHandler instance
-   *
-   * @param sendMessage - Function to send messages to Telegram chats
-   * @param generateSummary - Function to generate summaries for a chat
-   * @param creditsStore - Optional credits store for credit tracking
-   * @param privateTopicDeps - Optional dependencies for private topic summary flow
-   */
   constructor(
-    sendMessage: (chatId: number, text: string) => Promise<void>,
+    sendMessage: (chatId: number, text: string, targetGroupChatId?: number) => Promise<void>,
     generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
     creditsStore?: CreditsStore,
     privateTopicDeps?: PrivateTopicDeps,
@@ -354,8 +346,8 @@ export class SummaryHandler implements CommandHandler {
       //    Do NOT pass threadId — we want all group messages, not filtered by topic
       const summary = await this.generateSummary(groupChatId, range);
 
-      // 5. Send result to the private chat topic (sendMessage already has the chatId bound)
-      await this.sendMessage(chatId, summary);
+      // 5. Send result to the private chat topic, passing groupChatId for keyboard context
+      await this.sendMessage(chatId, summary, groupChatId);
     } catch (error) {
       const errorResponse = handleError(error instanceof Error ? error : new Error(String(error)));
       const userMessage = formatErrorForTelegram(errorResponse);
@@ -396,7 +388,7 @@ export class SummaryHandler implements CommandHandler {
 
       // Generate and send the summary (scoped to forum topic if called from one)
       const summary = await this.generateSummary(chatId, range, message.message_thread_id);
-      await this.sendMessage(chatId, summary);
+      await this.sendMessage(chatId, summary, chatId);
 
     } catch (error) {
       // Use centralized error handling
@@ -417,7 +409,7 @@ export class SummaryHandler implements CommandHandler {
  * @returns Configured SummaryHandler instance
  */
 export function createSummaryHandler(
-  sendMessage: (chatId: number, text: string) => Promise<void>,
+  sendMessage: (chatId: number, text: string, targetGroupChatId?: number) => Promise<void>,
   generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
   creditsStore?: CreditsStore,
   privateTopicDeps?: PrivateTopicDeps,
