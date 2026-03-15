@@ -538,6 +538,9 @@ export async function handleCallbackQuery(
       const menuKeyboard: InlineKeyboardMarkup = {
         inline_keyboard: [
           [
+            { text: '\u{1F4DD} Summarize recent', callback_data: 'nav:summary 100' },
+          ],
+          [
             { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
             { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
           ],
@@ -746,6 +749,9 @@ export async function handler(
     // Full menu buttons for service messages in private chats
     const FULL_MENU_KEYBOARD: InlineKeyboardMarkup = {
       inline_keyboard: [
+        [
+          { text: '\u{1F4DD} Summarize recent', callback_data: 'nav:summary 100' },
+        ],
         [
           { text: '\u{1F517} Link Group', callback_data: 'menu:link' },
           { text: '\u{1F4CB} My Groups', callback_data: 'menu:groups' },
