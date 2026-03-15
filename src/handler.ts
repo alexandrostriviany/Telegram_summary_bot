@@ -765,9 +765,10 @@ export async function handler(
     const sendSummaryMsg = isPrivateChat
       ? (chatId: number, text: string, targetGroupChatId?: number) => {
           const buttons: InlineKeyboardButton[] = [];
-          if (targetGroupChatId) {
-            const positiveId = String(targetGroupChatId).replace(/^-100/, '');
-            buttons.push({ text: '\u{1F4AC} Open Chat', url: `https://t.me/c/${positiveId}/1` });
+          const chatIdStr = String(targetGroupChatId);
+          if (targetGroupChatId && chatIdStr.startsWith('-100')) {
+            const positiveId = chatIdStr.slice(4);
+            buttons.push({ text: '\u{1F4AC} Open Chat', url: `https://t.me/c/${positiveId}/999999999` });
           }
           buttons.push({ text: '\u{1F4DD} Last 100 messages', callback_data: 'nav:summary 100' });
           const keyboard: InlineKeyboardMarkup = { inline_keyboard: [buttons] };
