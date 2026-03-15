@@ -203,25 +203,25 @@ async function fetchBotUser(telegramClient: TelegramClient): Promise<void> {
  * 
  * **Validates: Requirements 1.1, 1.2**
  */
-const WELCOME_MESSAGE = `🤖 *Hello! I'm the Summary Bot*
+const WELCOME_MESSAGE = `🤖 <b>Hello! I'm the Summary Bot</b>
 
 I help you catch up on missed discussions by generating AI-powered summaries of your group chat.
 
-*Available Commands:*
-• \`/summary\` - Summarize the last 24 hours
-• \`/summary 2h\` - Summarize the last 2 hours
-• \`/summary 50\` - Summarize the last 50 messages
-• \`/help\` - Show help and privacy info
+<b>Available Commands:</b>
+• <code>/summary</code> - Summarize the last 24 hours
+• <code>/summary 2h</code> - Summarize the last 2 hours
+• <code>/summary 50</code> - Summarize the last 50 messages
+• <code>/help</code> - Show help and privacy info
 
-💬 *Private Summaries:* DM me and use /link to get private per-group summaries!
+💬 <b>Private Summaries:</b> DM me and use /link to get private per-group summaries!
 
-*Privacy & Data Usage:*
+<b>Privacy &amp; Data Usage:</b>
 📝 I only store text messages temporarily (72 hours)
 🔒 Messages are automatically deleted after expiration
 🚫 I ignore stickers, media, and system messages
 🔐 Your data is stored securely and never shared
 
-_Note: For me to work properly, please ensure Privacy Mode is disabled in BotFather settings._`;
+<i>Note: For me to work properly, please ensure Privacy Mode is disabled in BotFather settings.</i>`;
 
 /**
  * Get the bot token from environment variables
