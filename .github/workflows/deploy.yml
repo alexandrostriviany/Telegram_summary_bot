@@ -128,29 +128,19 @@ jobs:
             MON_PARAMS="$MON_PARAMS SummaryCacheTableName=${{ steps.get-outputs.outputs.summary_cache_table }}"
           fi
 
-          # Package template to S3 first (required when template > 51,200 bytes)
+          # Use SAM-managed S3 bucket for template upload (required when template > 51,200 bytes)
           SAM_BUCKET=$(aws cloudformation describe-stacks \
             --stack-name aws-sam-cli-managed-default \
             --query 'Stacks[0].Outputs[?OutputKey==`SourceBucket`].OutputValue' \
             --output text 2>/dev/null || echo "")
 
-          if [ -n "$SAM_BUCKET" ]; then
-            aws cloudformation package \
-              --template-file monitoring/cloudwatch-monitoring.yaml \
-              --s3-bucket "$SAM_BUCKET" \
-              --s3-prefix telegram-summary-bot-monitoring \
-              --output-template-file monitoring/packaged-monitoring.yaml
+          DEPLOY_ARGS="--template-file monitoring/cloudwatch-monitoring.yaml"
+          DEPLOY_ARGS="$DEPLOY_ARGS --stack-name ${{ steps.get-outputs.outputs.stack_name }}-monitoring"
+          DEPLOY_ARGS="$DEPLOY_ARGS --no-fail-on-empty-changeset"
+          DEPLOY_ARGS="$DEPLOY_ARGS --parameter-overrides $MON_PARAMS"
 
-            aws cloudformation deploy \
-              --template-file monitoring/packaged-monitoring.yaml \
-              --stack-name "${{ steps.get-outputs.outputs.stack_name }}-monitoring" \
-              --no-fail-on-empty-changeset \
-              --parameter-overrides $MON_PARAMS
-          else
-            aws cloudformation deploy \
-              --template-file monitoring/cloudwatch-monitoring.yaml \
-              --stack-name "${{ steps.get-outputs.outputs.stack_name }}-monitoring" \
-              --no-fail-on-empty-changeset \
-              --s3-bucket "$(aws s3 ls | head -1 | awk '{print $3}')" \
-              --parameter-overrides $MON_PARAMS
+          if [ -n "$SAM_BUCKET" ]; then
+            DEPLOY_ARGS="$DEPLOY_ARGS --s3-bucket $SAM_BUCKET --s3-prefix telegram-summary-bot-monitoring"
           fi
+
+          aws cloudformation deploy $DEPLOY_ARGS
