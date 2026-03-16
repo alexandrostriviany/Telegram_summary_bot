@@ -161,8 +161,49 @@ Resources:
             },
 
             {
+              "type": "text",
+              "x": 0, "y": 5, "width": 24, "height": 1,
+              "properties": {
+                "markdown": "## Audience Growth"
+              }
+            },
+            {
+              "type": "log",
+              "x": 0, "y": 6, "width": 6, "height": 4,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}'\n| filter @message like /\"_type\":\"AUDIENCE\"/\n| stats count_distinct(userId) as unique_users by bin(1d) as day\n| sort day desc\n| limit 30",
+                "region": "${AWS::Region}",
+                "stacked": false,
+                "view": "table",
+                "title": "Unique Users (daily)"
+              }
+            },
+            {
+              "type": "log",
+              "x": 6, "y": 6, "width": 6, "height": 4,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}'\n| filter @message like /\"_type\":\"AUDIENCE\"/\n| filter chatType != 'private'\n| stats count_distinct(chatId) as unique_chats by bin(1d) as day\n| sort day desc\n| limit 30",
+                "region": "${AWS::Region}",
+                "stacked": false,
+                "view": "table",
+                "title": "Unique Group Chats (daily)"
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 6, "width": 12, "height": 4,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}'\n| filter @message like /\"_type\":\"AUDIENCE\"/\n| stats count_distinct(userId) as unique_users, count_distinct(chatId) as unique_chats, count(*) as total_events by bin(1d) as day\n| sort day asc\n| limit 90",
+                "region": "${AWS::Region}",
+                "stacked": false,
+                "view": "bar",
+                "title": "Audience Growth Trend (90 days)"
+              }
+            },
+
+            {
               "type": "metric",
-              "x": 0, "y": 5, "width": 12, "height": 6,
+              "x": 0, "y": 10, "width": 12, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "Total Requests"}]
@@ -177,7 +218,7 @@ Resources:
             },
             {
               "type": "metric",
-              "x": 12, "y": 5, "width": 12, "height": 6,
+              "x": 12, "y": 10, "width": 12, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "4xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "4xx", "color": "#ff9900"}],
@@ -194,7 +235,7 @@ Resources:
 
             {
               "type": "metric",
-              "x": 0, "y": 11, "width": 12, "height": 6,
+              "x": 0, "y": 16, "width": 12, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/Lambda", "Invocations", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Invocations", "color": "#2ca02c"}],
@@ -211,7 +252,7 @@ Resources:
             },
             {
               "type": "metric",
-              "x": 12, "y": 11, "width": 12, "height": 6,
+              "x": 12, "y": 16, "width": 12, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p50",  "label": "p50"}],
@@ -230,7 +271,7 @@ Resources:
 
             {
               "type": "metric",
-              "x": 0, "y": 17, "width": 12, "height": 6,
+              "x": 0, "y": 22, "width": 12, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/DynamoDB", "ConsumedReadCapacityUnits",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read RCU"}],
@@ -246,7 +287,7 @@ Resources:
             },
             {
               "type": "metric",
-              "x": 12, "y": 17, "width": 12, "height": 6,
+              "x": 12, "y": 22, "width": 12, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/DynamoDB", "ReadThrottleEvents",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read Throttles",  "color": "#ff9900"}],

@@ -676,6 +676,17 @@ export async function handleWebhook(
 
   const message = update.message;
 
+  // Structured audience tracking log for CloudWatch Logs Insights
+  // Enables count_distinct() queries for unique users and unique chats
+  if (message.from?.id) {
+    console.log(JSON.stringify({
+      _type: 'AUDIENCE',
+      userId: message.from.id,
+      chatId: message.chat.id,
+      chatType: message.chat.type,
+    }));
+  }
+
   // Route based on message type
   // Priority: bot added > command > text message > ignore
 
