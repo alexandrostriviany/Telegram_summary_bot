@@ -18,6 +18,7 @@ import { AIProvider, AIProviderType, SummarizeResult, TokenUsage } from '../ai/a
 import { logTokenUsage, logAggregatedTokenUsage } from '../ai/token-usage-logger';
 import { COMBINE_SUMMARIES_PROMPT } from '../ai/prompts';
 import { NoMessagesError } from '../errors/error-handler';
+import { RequestCoalescer } from '../cache/request-coalescer';
 
 // Re-export NoMessagesError for backward compatibility
 export { NoMessagesError };
@@ -114,6 +115,7 @@ export class DefaultSummaryEngine implements SummaryEngine {
   private aiProvider: AIProvider;
   private providerType: AIProviderType;
   private model: string;
+  private coalescer?: RequestCoalescer;
 
   /**
    * Create a new DefaultSummaryEngine instance
@@ -122,17 +124,20 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * @param aiProvider - The AI provider for summarization
    * @param providerType - The AI provider type for logging (default: 'openai')
    * @param model - The model identifier for logging (default: 'unknown')
+   * @param coalescer - Optional request coalescer for deduplicating concurrent requests
    */
   constructor(
     messageStore: MessageStore,
     aiProvider: AIProvider,
     providerType: AIProviderType = 'openai',
-    model: string = 'unknown'
+    model: string = 'unknown',
+    coalescer?: RequestCoalescer
   ) {
     this.messageStore = messageStore;
     this.aiProvider = aiProvider;
     this.providerType = providerType;
     this.model = model;
+    this.coalescer = coalescer;
   }
 
   /**
@@ -146,6 +151,16 @@ export class DefaultSummaryEngine implements SummaryEngine {
    * **Validates: Requirements 3.1, 3.2, 3.3**
    */
   async generateSummary(chatId: number, range: MessageRange, threadId?: number): Promise<string> {
+    if (this.coalescer) {
+      const key = threadId !== undefined
+        ? `${chatId}:${range.type}:${range.value}:${threadId}`
+        : `${chatId}:${range.type}:${range.value}`;
+      return this.coalescer.getOrExecute(key, () => this.doGenerateSummary(chatId, range, threadId));
+    }
+    return this.doGenerateSummary(chatId, range, threadId);
+  }
+
+  private async doGenerateSummary(chatId: number, range: MessageRange, threadId?: number): Promise<string> {
     // Fetch messages based on the range (scoped to forum topic if threadId is set)
     const messages = await this.fetchMessages(chatId, range, threadId);
 
@@ -546,7 +561,8 @@ export function createSummaryEngine(
   messageStore: MessageStore,
   aiProvider: AIProvider,
   providerType?: AIProviderType,
-  model?: string
+  model?: string,
+  coalescer?: RequestCoalescer
 ): SummaryEngine {
-  return new DefaultSummaryEngine(messageStore, aiProvider, providerType, model);
+  return new DefaultSummaryEngine(messageStore, aiProvider, providerType, model, coalescer);
 }
