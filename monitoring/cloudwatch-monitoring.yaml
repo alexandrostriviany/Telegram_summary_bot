@@ -50,18 +50,12 @@ Parameters:
     Description: Admin email address for alarm notifications (leave empty to skip)
     Default: ''
 
-  SummaryCacheTableName:
-    Type: String
-    Description: Name of the DynamoDB summary cache table
-    Default: ''
-
 Conditions:
   HasAdminEmail: !Not [!Equals [!Ref AdminEmail, '']]
   HasCreditsTable: !Not [!Equals [!Ref UserCreditsTableName, '']]
   HasOwnershipTable: !Not [!Equals [!Ref ChatOwnershipTableName, '']]
   HasTopicLinksTable: !Not [!Equals [!Ref TopicLinksTableName, '']]
   HasUserGroupsTable: !Not [!Equals [!Ref UserGroupMembershipTableName, '']]
-  HasSummaryCacheTable: !Not [!Equals [!Ref SummaryCacheTableName, '']]
 
 Resources:
 
@@ -463,62 +457,6 @@ Resources:
                 "title": "Recent Token Usage (last 20 requests)",
                 "stacked": false
               }
-            },
-
-            {
-              "type": "text",
-              "x": 0, "y": 39, "width": 24, "height": 1,
-              "properties": {
-                "markdown": "## Summary Caching"
-              }
-            },
-            {
-              "type": "metric",
-              "x": 0, "y": 40, "width": 12, "height": 6,
-              "properties": {
-                "title": "Summary Cache Hit Rate (%)",
-                "metrics": [
-                  [{"expression": "IF(hits+misses>0, 100*hits/(hits+misses), 0)", "label": "Hit Rate %", "id": "rate"}],
-                  ["TelegramSummaryBot", "SummaryCacheHit", {"stat": "Sum", "id": "hits", "visible": false}],
-                  ["TelegramSummaryBot", "SummaryCacheMiss", {"stat": "Sum", "id": "misses", "visible": false}]
-                ],
-                "view": "timeSeries",
-                "period": 3600,
-                "stat": "Sum",
-                "region": "${AWS::Region}",
-                "yAxis": {"left": {"min": 0, "max": 100}}
-              }
-            },
-            {
-              "type": "metric",
-              "x": 12, "y": 40, "width": 12, "height": 6,
-              "properties": {
-                "title": "Summary Cache Events",
-                "metrics": [
-                  ["TelegramSummaryBot", "SummaryCacheHit", {"stat": "Sum", "label": "Cache Hits", "color": "#2ca02c"}],
-                  ["TelegramSummaryBot", "SummaryCacheMiss", {"stat": "Sum", "label": "Cache Misses", "color": "#d62728"}],
-                  ["TelegramSummaryBot", "SummaryCacheCoalesced", {"stat": "Sum", "label": "Coalesced", "color": "#1f77b4"}]
-                ],
-                "view": "timeSeries",
-                "period": 3600,
-                "stat": "Sum",
-                "region": "${AWS::Region}"
-              }
-            },
-            {
-              "type": "metric",
-              "x": 0, "y": 46, "width": 12, "height": 6,
-              "properties": {
-                "title": "Gemini Context Cache",
-                "metrics": [
-                  ["TelegramSummaryBot", "GeminiContextCacheHit", {"stat": "Sum", "label": "Cache Hits", "color": "#2ca02c"}],
-                  ["TelegramSummaryBot", "GeminiContextCacheMiss", {"stat": "Sum", "label": "Cache Misses", "color": "#d62728"}]
-                ],
-                "view": "timeSeries",
-                "period": 3600,
-                "stat": "Sum",
-                "region": "${AWS::Region}"
-              }
             }
           ]
         }
@@ -701,48 +639,11 @@ Resources:
             {
               "type": "text",
               "x": 0, "y": 26, "width": 24, "height": 1,
-              "properties": { "markdown": "## DynamoDB – Summary Cache (${SummaryCacheTableName})" }
-            },
-            {
-              "type": "metric",
-              "x": 0, "y": 27, "width": 12, "height": 6,
-              "properties": {
-                "metrics": [
-                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits",  "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Read RCU"}],
-                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Write WCU"}]
-                ],
-                "view": "timeSeries",
-                "region": "${AWS::Region}",
-                "period": 300,
-                "title": "Summary Cache – Consumed Capacity Units",
-                "yAxis": {"left": {"min": 0}}
-              }
-            },
-            {
-              "type": "metric",
-              "x": 12, "y": 27, "width": 12, "height": 6,
-              "properties": {
-                "metrics": [
-                  ["AWS/DynamoDB", "ReadThrottleEvents",  "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Read Throttles",  "color": "#ff9900"}],
-                  ["AWS/DynamoDB", "WriteThrottleEvents", "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Write Throttles", "color": "#d13212"}],
-                  ["AWS/DynamoDB", "SystemErrors",        "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "System Errors",   "color": "#9467bd"}]
-                ],
-                "view": "timeSeries",
-                "region": "${AWS::Region}",
-                "period": 300,
-                "title": "Summary Cache – Throttles & Errors",
-                "yAxis": {"left": {"min": 0}}
-              }
-            },
-
-            {
-              "type": "text",
-              "x": 0, "y": 33, "width": 24, "height": 1,
               "properties": { "markdown": "## API Gateway – HTTP API (${HttpApiId})" }
             },
             {
               "type": "metric",
-              "x": 0, "y": 34, "width": 8, "height": 6,
+              "x": 0, "y": 27, "width": 8, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum"}]
@@ -756,7 +657,7 @@ Resources:
             },
             {
               "type": "metric",
-              "x": 8, "y": 34, "width": 8, "height": 6,
+              "x": 8, "y": 27, "width": 8, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "4xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "4xx", "color": "#ff9900"}],
@@ -771,7 +672,7 @@ Resources:
             },
             {
               "type": "metric",
-              "x": 16, "y": 34, "width": 8, "height": 6,
+              "x": 16, "y": 27, "width": 8, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "Latency",            "ApiId", "${HttpApiId}", {"stat": "p50", "label": "Latency p50"}],
@@ -932,67 +833,6 @@ Resources:
             }
           ]
         }
-
-  # ==========================================================================
-  # METRIC FILTERS – Summary Caching
-  #
-  # Extract structured metrics from Lambda log lines for cache observability.
-  # ==========================================================================
-
-  SummaryCacheHitFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
-      FilterPattern: '"Summary cache HIT"'
-      MetricTransformations:
-        - MetricNamespace: TelegramSummaryBot
-          MetricName: SummaryCacheHit
-          MetricValue: '1'
-          DefaultValue: 0
-
-  SummaryCacheMissFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
-      FilterPattern: '"Summary cache MISS"'
-      MetricTransformations:
-        - MetricNamespace: TelegramSummaryBot
-          MetricName: SummaryCacheMiss
-          MetricValue: '1'
-          DefaultValue: 0
-
-  SummaryCoalescedFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
-      FilterPattern: '"Coalesced request for key:"'
-      MetricTransformations:
-        - MetricNamespace: TelegramSummaryBot
-          MetricName: SummaryCacheCoalesced
-          MetricValue: '1'
-          DefaultValue: 0
-
-  GeminiCacheHitFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
-      FilterPattern: '"Using Gemini cached content:"'
-      MetricTransformations:
-        - MetricNamespace: TelegramSummaryBot
-          MetricName: GeminiContextCacheHit
-          MetricValue: '1'
-          DefaultValue: 0
-
-  GeminiCacheMissFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
-      FilterPattern: '"Failed to create Gemini cached content:"'
-      MetricTransformations:
-        - MetricNamespace: TelegramSummaryBot
-          MetricName: GeminiContextCacheMiss
-          MetricValue: '1'
-          DefaultValue: 0
 
   # ==========================================================================
   # CLOUDWATCH ALARMS
@@ -1289,73 +1129,6 @@ Resources:
         - HasAdminEmail
         - [!Ref AlarmNotificationTopic]
         - !Ref 'AWS::NoValue'
-
-  # --- Summary Cache Table: throttle alarm ------------------------------------
-  SummaryCacheTableThrottleAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Condition: HasSummaryCacheTable
-    Properties:
-      AlarmName: !Sub '${AWS::StackName}-SummaryCacheTable-Throttles'
-      AlarmDescription: >
-        Summary cache DynamoDB table is being throttled. Cache lookups and
-        writes for summary deduplication are impacted.
-      Namespace: AWS/DynamoDB
-      MetricName: ThrottledRequests
-      Dimensions:
-        - Name: TableName
-          Value: !Ref SummaryCacheTableName
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 0
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If
-        - HasAdminEmail
-        - [!Ref AlarmNotificationTopic]
-        - !Ref 'AWS::NoValue'
-      OKActions: !If
-        - HasAdminEmail
-        - [!Ref AlarmNotificationTopic]
-        - !Ref 'AWS::NoValue'
-
-  # --- Summary Cache: high miss rate ------------------------------------------
-  SummaryCacheHighMissRateAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub '${AWS::StackName}-summary-cache-high-miss-rate'
-      AlarmDescription: >
-        Summary cache miss rate exceeds 90% for 1 hour - caching may be broken
-      Metrics:
-        - Id: hits
-          MetricStat:
-            Metric:
-              Namespace: TelegramSummaryBot
-              MetricName: SummaryCacheHit
-            Period: 3600
-            Stat: Sum
-          ReturnData: false
-        - Id: misses
-          MetricStat:
-            Metric:
-              Namespace: TelegramSummaryBot
-              MetricName: SummaryCacheMiss
-            Period: 3600
-            Stat: Sum
-          ReturnData: false
-        - Id: miss_rate
-          Expression: 'IF(hits+misses>0, 100*misses/(hits+misses), 0)'
-          Label: 'Miss Rate %'
-          ReturnData: true
-      ComparisonOperator: GreaterThanThreshold
-      Threshold: 90
-      EvaluationPeriods: 1
-      TreatMissingData: notBreaching
-      ActionsEnabled: true
-      AlarmActions:
-        - !If [HasAdminEmail, !Ref AlarmNotificationTopic, !Ref 'AWS::NoValue']
-      OKActions:
-        - !If [HasAdminEmail, !Ref AlarmNotificationTopic, !Ref 'AWS::NoValue']
 
 Outputs:
   SystemOverviewDashboardUrl:
