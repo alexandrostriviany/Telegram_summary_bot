@@ -418,21 +418,6 @@ Resources:
                 "stat": "Sum",
                 "region": "${AWS::Region}"
               }
-            },
-            {
-              "type": "metric",
-              "x": 0, "y": 46, "width": 12, "height": 6,
-              "properties": {
-                "title": "Gemini Context Cache",
-                "metrics": [
-                  ["TelegramSummaryBot", "GeminiContextCacheHit", {"stat": "Sum", "label": "Cache Hits", "color": "#2ca02c"}],
-                  ["TelegramSummaryBot", "GeminiContextCacheMiss", {"stat": "Sum", "label": "Cache Misses", "color": "#d62728"}]
-                ],
-                "view": "timeSeries",
-                "period": 3600,
-                "stat": "Sum",
-                "region": "${AWS::Region}"
-              }
             }
           ]
         }
@@ -883,28 +868,6 @@ Resources:
       MetricTransformations:
         - MetricNamespace: TelegramSummaryBot
           MetricName: SummaryCacheCoalesced
-          MetricValue: '1'
-          DefaultValue: 0
-
-  GeminiCacheHitFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
-      FilterPattern: '"Using Gemini cached content:"'
-      MetricTransformations:
-        - MetricNamespace: TelegramSummaryBot
-          MetricName: GeminiContextCacheHit
-          MetricValue: '1'
-          DefaultValue: 0
-
-  GeminiCacheMissFilter:
-    Type: AWS::Logs::MetricFilter
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
-      FilterPattern: '"Failed to create Gemini cached content:"'
-      MetricTransformations:
-        - MetricNamespace: TelegramSummaryBot
-          MetricName: GeminiContextCacheMiss
           MetricValue: '1'
           DefaultValue: 0
 

@@ -12,7 +12,6 @@
 
 import { AIProvider, AIProviderError, SummarizeOptions, SummarizeResult, TokenUsage } from './ai-provider';
 import { SUMMARY_SYSTEM_PROMPT, SUMMARY_RESPONSE_SCHEMA } from './prompts';
-import { GeminiContextCache, createGeminiContextCache } from './gemini-context-cache';
 
 // ============================================================================
 // Types and Interfaces
@@ -38,7 +37,6 @@ interface GeminiRequest {
       thinkingBudget: number;
     };
   };
-  cachedContent?: string;
 }
 
 /**
@@ -116,7 +114,6 @@ export class GeminiProvider implements AIProvider {
   private readonly apiKey: string;
   private readonly model: string;
   private readonly maxContextTokens: number;
-  private readonly contextCache: GeminiContextCache;
 
   /**
    * Create a new Gemini provider instance
@@ -137,7 +134,6 @@ export class GeminiProvider implements AIProvider {
       );
     }
 
-    this.contextCache = createGeminiContextCache(this.apiKey, this.model);
   }
 
   /**
@@ -159,14 +155,6 @@ export class GeminiProvider implements AIProvider {
     const formattedMessages = messages.join('\n');
     const userPrompt = `Summarize:\n\n${formattedMessages}`;
 
-    // Try to use cached system instruction
-    let cachedContentName: string | null = null;
-    try {
-      cachedContentName = await this.contextCache.getCachedContentName();
-    } catch {
-      // Never let caching break summarization
-    }
-
     const requestBody: GeminiRequest = {
       contents: [
         {
@@ -174,12 +162,9 @@ export class GeminiProvider implements AIProvider {
           parts: [{ text: userPrompt }],
         },
       ],
-      // Only include systemInstruction if NOT using cached content
-      ...(cachedContentName ? {} : {
-        systemInstruction: {
-          parts: [{ text: SUMMARY_SYSTEM_PROMPT }],
-        },
-      }),
+      systemInstruction: {
+        parts: [{ text: SUMMARY_SYSTEM_PROMPT }],
+      },
       generationConfig: {
         maxOutputTokens: maxTokens,
         temperature: temperature,
@@ -190,12 +175,6 @@ export class GeminiProvider implements AIProvider {
         },
       },
     };
-
-    // If using cached content, add it to the request
-    if (cachedContentName) {
-      requestBody.cachedContent = cachedContentName;
-      console.log('Using Gemini cached content:', cachedContentName);
-    }
 
     try {
       const response = await this.makeApiRequest(requestBody);
