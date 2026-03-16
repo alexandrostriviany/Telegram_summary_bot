@@ -87,6 +87,7 @@ jobs:
           MESSAGES_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="MessagesTableName") | .OutputValue')
           CREDITS_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="UserCreditsTableName") | .OutputValue')
           OWNERSHIP_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="ChatOwnershipTableName") | .OutputValue')
+          SUMMARY_CACHE_TABLE=$(echo "$OUTPUTS" | jq -r '.[] | select(.OutputKey=="SummaryCacheTableName") | .OutputValue // empty')
 
           # Extract HttpApiId from the API endpoint URL
           HTTP_API_ID=$(echo "$API_ENDPOINT" | sed 's|https://||' | cut -d. -f1)
@@ -97,6 +98,7 @@ jobs:
           echo "messages_table=$MESSAGES_TABLE" >> "$GITHUB_OUTPUT"
           echo "credits_table=$CREDITS_TABLE" >> "$GITHUB_OUTPUT"
           echo "ownership_table=$OWNERSHIP_TABLE" >> "$GITHUB_OUTPUT"
+          echo "summary_cache_table=$SUMMARY_CACHE_TABLE" >> "$GITHUB_OUTPUT"
 
       - name: Register Telegram webhook
         run: |
@@ -122,8 +124,33 @@ jobs:
             MON_PARAMS="$MON_PARAMS AdminEmail=${{ secrets.ADMIN_EMAIL }}"
           fi
 
-          aws cloudformation deploy \
-            --template-file monitoring/cloudwatch-monitoring.yaml \
-            --stack-name "${{ steps.get-outputs.outputs.stack_name }}-monitoring" \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides $MON_PARAMS
+          if [ -n "${{ steps.get-outputs.outputs.summary_cache_table }}" ]; then
+            MON_PARAMS="$MON_PARAMS SummaryCacheTableName=${{ steps.get-outputs.outputs.summary_cache_table }}"
+          fi
+
+          # Package template to S3 first (required when template > 51,200 bytes)
+          SAM_BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name aws-sam-cli-managed-default \
+            --query 'Stacks[0].Outputs[?OutputKey==`SourceBucket`].OutputValue' \
+            --output text 2>/dev/null || echo "")
+
+          if [ -n "$SAM_BUCKET" ]; then
+            aws cloudformation package \
+              --template-file monitoring/cloudwatch-monitoring.yaml \
+              --s3-bucket "$SAM_BUCKET" \
+              --s3-prefix telegram-summary-bot-monitoring \
+              --output-template-file monitoring/packaged-monitoring.yaml
+
+            aws cloudformation deploy \
+              --template-file monitoring/packaged-monitoring.yaml \
+              --stack-name "${{ steps.get-outputs.outputs.stack_name }}-monitoring" \
+              --no-fail-on-empty-changeset \
+              --parameter-overrides $MON_PARAMS
+          else
+            aws cloudformation deploy \
+              --template-file monitoring/cloudwatch-monitoring.yaml \
+              --stack-name "${{ steps.get-outputs.outputs.stack_name }}-monitoring" \
+              --no-fail-on-empty-changeset \
+              --s3-bucket "$(aws s3 ls | head -1 | awk '{print $3}')" \
+              --parameter-overrides $MON_PARAMS
+          fi
