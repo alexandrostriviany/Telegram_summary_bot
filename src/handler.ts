@@ -21,11 +21,13 @@ import { createUnlinkHandler, UNLINK_CONFIRM_PREFIX, UNLINK_CANCEL_PREFIX } from
 import { createGroupsHandler } from './commands/groups-handler';
 import { TelegramClient, createTelegramClient } from './telegram/telegram-client';
 import { createSummaryEngine } from './summary/summary-engine';
+import { RequestCoalescer, createRequestCoalescer } from './cache/request-coalescer';
 import { createSummaryFormatter } from './summary/summary-formatter';
 import { createAIProvider, isAIProviderConfigured, getProviderTypeFromEnv } from './ai/ai-provider';
 import { DynamoDBCreditsStore, CreditsStore } from './store/credits-store';
 import { DynamoDBTopicLinkStore, TopicLinkStore } from './store/topic-link-store';
 import { DynamoDBUserGroupStore, UserGroupStore } from './store/user-group-store';
+import { DynamoDBSummaryCacheStore, SummaryCacheStore } from './store/summary-cache-store';
 import { createMembershipService, MembershipService } from './services/membership-service';
 import { handleError, formatErrorForTelegram } from './errors/error-handler';
 
@@ -52,6 +54,12 @@ let cachedUserGroupStore: UserGroupStore | null = null;
 /** Cached membership service instance */
 let cachedMembershipService: MembershipService | null = null;
 
+/** Cached request coalescer for summary deduplication */
+let cachedRequestCoalescer: RequestCoalescer | null = null;
+
+/** Cached summary cache store instance */
+let cachedSummaryCacheStore: SummaryCacheStore | null = null;
+
 /** Cached bot user info (from getMe) */
 let cachedBotUser: BotUser | null = null;
 
@@ -69,6 +77,8 @@ export function resetCachedInstances(): void {
   cachedTopicLinkStore = null;
   cachedUserGroupStore = null;
   cachedMembershipService = null;
+  cachedRequestCoalescer = null;
+  cachedSummaryCacheStore = null;
   cachedBotUser = null;
   commandsRegistered = false;
 }
@@ -131,6 +141,26 @@ function getMembershipService(telegramClient: TelegramClient): MembershipService
     cachedMembershipService = createMembershipService(telegramClient);
   }
   return cachedMembershipService;
+}
+
+/**
+ * Get or create the request coalescer (singleton pattern for Lambda reuse)
+ */
+function getRequestCoalescer(): RequestCoalescer {
+  if (!cachedRequestCoalescer) {
+    cachedRequestCoalescer = createRequestCoalescer();
+  }
+  return cachedRequestCoalescer;
+}
+
+/**
+ * Get or create the summary cache store (singleton pattern for Lambda reuse)
+ */
+function getSummaryCacheStore(): SummaryCacheStore {
+  if (!cachedSummaryCacheStore) {
+    cachedSummaryCacheStore = new DynamoDBSummaryCacheStore();
+  }
+  return cachedSummaryCacheStore;
 }
 
 /**
@@ -862,9 +892,11 @@ export async function handler(
       const providerType = getProviderTypeFromEnv();
       const aiProvider = createAIProvider(providerType);
       const model = process.env.LLM_MODEL ?? 'default';
-      const summaryEngine = createSummaryEngine(messageStore, aiProvider, providerType, model);
+      const coalescer = getRequestCoalescer();
+      const summaryEngine = createSummaryEngine(messageStore, aiProvider, providerType, model, coalescer);
       const summaryFormatter = createSummaryFormatter();
 
+      const summaryCacheStore = getSummaryCacheStore();
       const summaryHandler = createSummaryHandler(
         sendSummaryMsg,
         async (chatId: number, range, threadId?: number) => {
@@ -873,6 +905,7 @@ export async function handler(
         },
         creditsStore,
         { topicLinkStore, membershipService, telegramClient },
+        summaryCacheStore,
       );
       commandRouter.register('summary', summaryHandler);
     } else {

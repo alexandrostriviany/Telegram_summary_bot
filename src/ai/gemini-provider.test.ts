@@ -14,6 +14,14 @@ import { GeminiProvider } from './gemini-provider';
 import { AIProviderError } from './ai-provider';
 import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 
+// Mock context cache to return null (no caching) so existing tests are unaffected
+jest.mock('./gemini-context-cache', () => ({
+  createGeminiContextCache: () => ({
+    getCachedContentName: async () => null,
+    isValid: () => false,
+  }),
+}));
+
 // Mock global fetch
 const mockFetch = jest.fn();
 global.fetch = mockFetch as any;

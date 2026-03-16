@@ -16,6 +16,7 @@ import { CreditsStore } from '../store/credits-store';
 import { TopicLinkStore } from '../store/topic-link-store';
 import { MembershipService } from '../services/membership-service';
 import { TelegramClient } from '../telegram/telegram-client';
+import { SummaryCacheStore, buildCacheKey } from '../store/summary-cache-store';
 
 /**
  * Default summary time window in hours when no parameter is provided
@@ -233,17 +234,20 @@ export class SummaryHandler implements CommandHandler {
   private generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>;
   private creditsStore?: CreditsStore;
   private privateTopicDeps?: PrivateTopicDeps;
+  private summaryCacheStore?: SummaryCacheStore;
 
   constructor(
     sendMessage: (chatId: number, text: string, targetGroupChatId?: number) => Promise<void>,
     generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
     creditsStore?: CreditsStore,
     privateTopicDeps?: PrivateTopicDeps,
+    summaryCacheStore?: SummaryCacheStore,
   ) {
     this.sendMessage = sendMessage;
     this.generateSummary = generateSummary;
     this.creditsStore = creditsStore;
     this.privateTopicDeps = privateTopicDeps;
+    this.summaryCacheStore = summaryCacheStore;
   }
 
   /**
@@ -334,7 +338,19 @@ export class SummaryHandler implements CommandHandler {
         return;
       }
 
-      // 3. Credit check — user pays their own credits
+      // 3. Check summary cache BEFORE consuming credits (use groupChatId for cache key)
+      if (this.summaryCacheStore) {
+        const cacheKey = buildCacheKey(groupChatId, range.type, range.value);
+        const cached = await this.summaryCacheStore.get(cacheKey);
+        if (cached) {
+          console.log('Summary cache HIT for', cacheKey);
+          await this.sendMessage(chatId, cached.summary, groupChatId);
+          return;
+        }
+        console.log('Summary cache MISS for', cacheKey);
+      }
+
+      // 4. Credit check — user pays their own credits
       if (this.creditsStore) {
         const consumed = await this.creditsStore.consumeCredit(userId);
         if (!consumed) {
@@ -342,11 +358,21 @@ export class SummaryHandler implements CommandHandler {
         }
       }
 
-      // 4. Generate summary using groupChatId (NOT the private chat ID)
+      // 5. Generate summary using groupChatId (NOT the private chat ID)
       //    Do NOT pass threadId — we want all group messages, not filtered by topic
       const summary = await this.generateSummary(groupChatId, range);
 
-      // 5. Send result to the private chat topic, passing groupChatId for keyboard context
+      // 6. Store in cache (non-fatal)
+      if (this.summaryCacheStore) {
+        const cacheKey = buildCacheKey(groupChatId, range.type, range.value);
+        try {
+          await this.summaryCacheStore.put(cacheKey, summary, groupChatId, range.type, range.value);
+        } catch (error) {
+          console.error('Failed to cache summary:', error);
+        }
+      }
+
+      // 7. Send result to the private chat topic, passing groupChatId for keyboard context
       await this.sendMessage(chatId, summary, groupChatId);
     } catch (error) {
       const errorResponse = handleError(error instanceof Error ? error : new Error(String(error)));
@@ -362,6 +388,18 @@ export class SummaryHandler implements CommandHandler {
     const chatId = message.chat.id;
 
     try {
+      // Check summary cache BEFORE consuming credits
+      if (this.summaryCacheStore) {
+        const cacheKey = buildCacheKey(chatId, range.type, range.value);
+        const cached = await this.summaryCacheStore.get(cacheKey);
+        if (cached) {
+          console.log('Summary cache HIT for', cacheKey);
+          await this.sendMessage(chatId, cached.summary, chatId);
+          return;
+        }
+        console.log('Summary cache MISS for', cacheKey);
+      }
+
       // Check credits before generating summary
       if (this.creditsStore) {
         const userId = message.from?.id ?? 0;
@@ -388,6 +426,17 @@ export class SummaryHandler implements CommandHandler {
 
       // Generate and send the summary (scoped to forum topic if called from one)
       const summary = await this.generateSummary(chatId, range, message.message_thread_id);
+
+      // Store in cache (non-fatal)
+      if (this.summaryCacheStore) {
+        const cacheKey = buildCacheKey(chatId, range.type, range.value);
+        try {
+          await this.summaryCacheStore.put(cacheKey, summary, chatId, range.type, range.value);
+        } catch (error) {
+          console.error('Failed to cache summary:', error);
+        }
+      }
+
       await this.sendMessage(chatId, summary, chatId);
 
     } catch (error) {
@@ -413,6 +462,7 @@ export function createSummaryHandler(
   generateSummary: (chatId: number, range: MessageRange, threadId?: number) => Promise<string>,
   creditsStore?: CreditsStore,
   privateTopicDeps?: PrivateTopicDeps,
+  summaryCacheStore?: SummaryCacheStore,
 ): SummaryHandler {
-  return new SummaryHandler(sendMessage, generateSummary, creditsStore, privateTopicDeps);
+  return new SummaryHandler(sendMessage, generateSummary, creditsStore, privateTopicDeps, summaryCacheStore);
 }
