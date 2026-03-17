@@ -124,7 +124,9 @@ export class GeminiProvider implements AIProvider {
    */
   constructor(apiKey?: string, model?: string) {
     this.apiKey = apiKey ?? process.env.GEMINI_API_KEY ?? '';
-    this.model = model ?? process.env.LLM_MODEL ?? DEFAULT_MODEL;
+    const envModel = process.env.LLM_MODEL;
+    const isGeminiModel = envModel && envModel.startsWith('gemini');
+    this.model = model ?? (isGeminiModel ? envModel : DEFAULT_MODEL);
     this.maxContextTokens = MAX_CONTEXT_TOKENS;
 
     if (!this.apiKey) {
