@@ -23,7 +23,7 @@ import { TelegramClient, createTelegramClient } from './telegram/telegram-client
 import { createSummaryEngine } from './summary/summary-engine';
 import { RequestCoalescer, createRequestCoalescer } from './cache/request-coalescer';
 import { createSummaryFormatter } from './summary/summary-formatter';
-import { createAIProvider, isAIProviderConfigured, getProviderTypeFromEnv } from './ai/ai-provider';
+import { isAIProviderConfigured, createAIProviderWithFallback } from './ai/ai-provider';
 import { DynamoDBCreditsStore, CreditsStore } from './store/credits-store';
 import { DynamoDBTopicLinkStore, TopicLinkStore } from './store/topic-link-store';
 import { DynamoDBUserGroupStore, UserGroupStore } from './store/user-group-store';
@@ -900,8 +900,7 @@ export async function handler(
 
     // Register /summary command handler
     if (isAIProviderConfigured()) {
-      const providerType = getProviderTypeFromEnv();
-      const aiProvider = createAIProvider(providerType);
+      const { provider: aiProvider, providerType } = createAIProviderWithFallback();
       const model = process.env.LLM_MODEL ?? 'default';
       const coalescer = getRequestCoalescer();
       const summaryEngine = createSummaryEngine(messageStore, aiProvider, providerType, model, coalescer);

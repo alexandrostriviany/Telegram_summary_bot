@@ -14,15 +14,20 @@ import {
   OpenAIProvider,
   BedrockProvider,
   GeminiProvider,
+  GrokProvider,
   createAIProvider,
   getProviderTypeFromEnv,
   isAIProviderConfigured,
+  parseFallbackChain,
+  createAIProviderWithFallback,
 } from './ai-provider';
 
 describe('AI Provider Module', () => {
   // Store original env values to restore after tests
   const originalEnv = process.env.LLM_PROVIDER;
   const originalGeminiKey = process.env.GEMINI_API_KEY;
+  const originalGrokKey = process.env.GROK_API_KEY;
+  const originalFallback = process.env.LLM_PROVIDER_FALLBACK;
 
   afterEach(() => {
     // Restore original environment variables
@@ -35,6 +40,16 @@ describe('AI Provider Module', () => {
       process.env.GEMINI_API_KEY = originalGeminiKey;
     } else {
       delete process.env.GEMINI_API_KEY;
+    }
+    if (originalGrokKey !== undefined) {
+      process.env.GROK_API_KEY = originalGrokKey;
+    } else {
+      delete process.env.GROK_API_KEY;
+    }
+    if (originalFallback !== undefined) {
+      process.env.LLM_PROVIDER_FALLBACK = originalFallback;
+    } else {
+      delete process.env.LLM_PROVIDER_FALLBACK;
     }
   });
 
@@ -186,6 +201,46 @@ describe('AI Provider Module', () => {
     });
   });
 
+  describe('GrokProvider', () => {
+    let provider: GrokProvider;
+
+    beforeEach(() => {
+      process.env.GROK_API_KEY = 'test-grok-key';
+      provider = new GrokProvider();
+    });
+
+    it('should implement AIProvider interface', () => {
+      expect(provider.summarize).toBeDefined();
+      expect(provider.getMaxContextTokens).toBeDefined();
+    });
+
+    it('should return correct max context tokens', () => {
+      expect(provider.getMaxContextTokens()).toBe(8192);
+    });
+
+    it('should throw AIProviderError when API key is not configured', () => {
+      delete process.env.GROK_API_KEY;
+      expect(() => new GrokProvider()).toThrow(AIProviderError);
+      expect(() => new GrokProvider()).toThrow('Grok API key is not configured');
+    });
+
+    it('should include provider type in error', () => {
+      delete process.env.GROK_API_KEY;
+      try {
+        new GrokProvider();
+        fail('Expected error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AIProviderError);
+        expect((error as AIProviderError).provider).toBe('grok');
+      }
+    });
+
+    it('should return empty JSON for empty messages array', async () => {
+      const result = await provider.summarize([]);
+      expect(result.text).toBe('{"t":[],"q":[]}');
+    });
+  });
+
   describe('BedrockProvider', () => {
     let provider: BedrockProvider;
 
@@ -239,6 +294,11 @@ describe('AI Provider Module', () => {
       expect(getProviderTypeFromEnv()).toBe('gemini');
     });
 
+    it('should return "grok" when LLM_PROVIDER is "grok"', () => {
+      process.env.LLM_PROVIDER = 'grok';
+      expect(getProviderTypeFromEnv()).toBe('grok');
+    });
+
     it('should handle uppercase values', () => {
       process.env.LLM_PROVIDER = 'OPENAI';
       expect(getProviderTypeFromEnv()).toBe('openai');
@@ -248,6 +308,9 @@ describe('AI Provider Module', () => {
 
       process.env.LLM_PROVIDER = 'GEMINI';
       expect(getProviderTypeFromEnv()).toBe('gemini');
+
+      process.env.LLM_PROVIDER = 'GROK';
+      expect(getProviderTypeFromEnv()).toBe('grok');
     });
 
     it('should handle mixed case values', () => {
@@ -259,6 +322,9 @@ describe('AI Provider Module', () => {
 
       process.env.LLM_PROVIDER = 'Gemini';
       expect(getProviderTypeFromEnv()).toBe('gemini');
+
+      process.env.LLM_PROVIDER = 'Grok';
+      expect(getProviderTypeFromEnv()).toBe('grok');
     });
 
     it('should handle values with whitespace', () => {
@@ -270,6 +336,9 @@ describe('AI Provider Module', () => {
 
       process.env.LLM_PROVIDER = '  gemini  ';
       expect(getProviderTypeFromEnv()).toBe('gemini');
+
+      process.env.LLM_PROVIDER = '  grok  ';
+      expect(getProviderTypeFromEnv()).toBe('grok');
     });
 
     it('should throw AIProviderConfigError when LLM_PROVIDER is not set', () => {
@@ -299,6 +368,7 @@ describe('AI Provider Module', () => {
       // Set test API keys for provider tests
       process.env.OPENAI_API_KEY = 'test-api-key';
       process.env.GEMINI_API_KEY = 'test-gemini-key';
+      process.env.GROK_API_KEY = 'test-grok-key';
     });
 
     afterEach(() => {
@@ -325,6 +395,11 @@ describe('AI Provider Module', () => {
         const provider = createAIProvider('gemini');
         expect(provider).toBeInstanceOf(GeminiProvider);
       });
+
+      it('should create GrokProvider when type is "grok"', () => {
+        const provider = createAIProvider('grok');
+        expect(provider).toBeInstanceOf(GrokProvider);
+      });
     });
 
     describe('with environment variable', () => {
@@ -344,6 +419,12 @@ describe('AI Provider Module', () => {
         process.env.LLM_PROVIDER = 'gemini';
         const provider = createAIProvider();
         expect(provider).toBeInstanceOf(GeminiProvider);
+      });
+
+      it('should create GrokProvider when LLM_PROVIDER is "grok"', () => {
+        process.env.LLM_PROVIDER = 'grok';
+        const provider = createAIProvider();
+        expect(provider).toBeInstanceOf(GrokProvider);
       });
 
       it('should throw AIProviderConfigError when LLM_PROVIDER is not set', () => {
@@ -372,10 +453,12 @@ describe('AI Provider Module', () => {
         const openaiProvider = createAIProvider('openai');
         const bedrockProvider = createAIProvider('bedrock');
         const geminiProvider = createAIProvider('gemini');
+        const grokProvider = createAIProvider('grok');
 
         expect(openaiProvider.getMaxContextTokens()).toBeGreaterThan(0);
         expect(bedrockProvider.getMaxContextTokens()).toBeGreaterThan(0);
         expect(geminiProvider.getMaxContextTokens()).toBeGreaterThan(0);
+        expect(grokProvider.getMaxContextTokens()).toBeGreaterThan(0);
       });
     });
   });
@@ -393,6 +476,11 @@ describe('AI Provider Module', () => {
 
     it('should return true when LLM_PROVIDER is "gemini"', () => {
       process.env.LLM_PROVIDER = 'gemini';
+      expect(isAIProviderConfigured()).toBe(true);
+    });
+
+    it('should return true when LLM_PROVIDER is "grok"', () => {
+      process.env.LLM_PROVIDER = 'grok';
       expect(isAIProviderConfigured()).toBe(true);
     });
 
@@ -420,6 +508,7 @@ describe('AI Provider Module', () => {
       // Set test API keys for provider tests
       process.env.OPENAI_API_KEY = 'test-api-key';
       process.env.GEMINI_API_KEY = 'test-gemini-key';
+      process.env.GROK_API_KEY = 'test-grok-key';
       // Mock fetch to reject immediately instead of making real network calls
       global.fetch = jest.fn().mockRejectedValue(new Error('Network disabled in tests'));
     });
@@ -438,6 +527,7 @@ describe('AI Provider Module', () => {
       { name: 'OpenAIProvider', create: () => new OpenAIProvider() },
       { name: 'BedrockProvider', create: () => new BedrockProvider() },
       { name: 'GeminiProvider', create: () => new GeminiProvider() },
+      { name: 'GrokProvider', create: () => new GrokProvider() },
     ];
 
     providers.forEach(({ name, create }) => {
@@ -476,6 +566,99 @@ describe('AI Provider Module', () => {
           await promise.catch(() => {});
         });
       });
+    });
+  });
+
+  describe('parseFallbackChain', () => {
+    it('should return empty array when LLM_PROVIDER_FALLBACK is not set', () => {
+      delete process.env.LLM_PROVIDER_FALLBACK;
+      expect(parseFallbackChain()).toEqual([]);
+    });
+
+    it('should return empty array when LLM_PROVIDER_FALLBACK is empty', () => {
+      process.env.LLM_PROVIDER_FALLBACK = '';
+      expect(parseFallbackChain()).toEqual([]);
+    });
+
+    it('should parse single provider', () => {
+      process.env.LLM_PROVIDER_FALLBACK = 'grok';
+      expect(parseFallbackChain()).toEqual(['grok']);
+    });
+
+    it('should parse multiple providers', () => {
+      process.env.LLM_PROVIDER_FALLBACK = 'grok,openai';
+      expect(parseFallbackChain()).toEqual(['grok', 'openai']);
+    });
+
+    it('should handle whitespace and case', () => {
+      process.env.LLM_PROVIDER_FALLBACK = ' Grok , OpenAI , Gemini ';
+      expect(parseFallbackChain()).toEqual(['grok', 'openai', 'gemini']);
+    });
+
+    it('should skip invalid providers', () => {
+      process.env.LLM_PROVIDER_FALLBACK = 'grok,invalid,openai';
+      expect(parseFallbackChain()).toEqual(['grok', 'openai']);
+    });
+
+    it('should skip empty entries', () => {
+      process.env.LLM_PROVIDER_FALLBACK = 'grok,,openai';
+      expect(parseFallbackChain()).toEqual(['grok', 'openai']);
+    });
+  });
+
+  describe('createAIProviderWithFallback', () => {
+    beforeEach(() => {
+      process.env.OPENAI_API_KEY = 'test-api-key';
+      process.env.GEMINI_API_KEY = 'test-gemini-key';
+      process.env.GROK_API_KEY = 'test-grok-key';
+    });
+
+    it('should return single provider when no fallback is configured', () => {
+      delete process.env.LLM_PROVIDER_FALLBACK;
+      process.env.LLM_PROVIDER = 'gemini';
+
+      const { provider, providerType } = createAIProviderWithFallback();
+      expect(providerType).toBe('gemini');
+      expect(provider).toBeInstanceOf(GeminiProvider);
+    });
+
+    it('should return FallbackProvider when fallback chain is configured', () => {
+      process.env.LLM_PROVIDER = 'gemini';
+      process.env.LLM_PROVIDER_FALLBACK = 'grok,openai';
+
+      const { provider, providerType } = createAIProviderWithFallback();
+      expect(providerType).toBe('gemini');
+      // FallbackProvider wraps multiple providers
+      expect(provider.getMaxContextTokens()).toBeGreaterThan(0);
+      expect(typeof provider.summarize).toBe('function');
+    });
+
+    it('should skip duplicate of primary in fallback chain', () => {
+      process.env.LLM_PROVIDER = 'gemini';
+      process.env.LLM_PROVIDER_FALLBACK = 'gemini,grok';
+
+      const { provider } = createAIProviderWithFallback();
+      // Should still work (gemini is not duplicated)
+      expect(provider.getMaxContextTokens()).toBeGreaterThan(0);
+    });
+
+    it('should accept explicit primary type', () => {
+      process.env.LLM_PROVIDER_FALLBACK = 'openai';
+
+      const { provider, providerType } = createAIProviderWithFallback('grok');
+      expect(providerType).toBe('grok');
+      expect(provider.getMaxContextTokens()).toBeGreaterThan(0);
+    });
+
+    it('should skip providers that fail to initialize', () => {
+      process.env.LLM_PROVIDER = 'gemini';
+      // Grok key is missing, so grok provider should be skipped
+      delete process.env.GROK_API_KEY;
+      process.env.LLM_PROVIDER_FALLBACK = 'grok,openai';
+
+      const { provider } = createAIProviderWithFallback();
+      // Should still create a provider (gemini + openai)
+      expect(provider.getMaxContextTokens()).toBeGreaterThan(0);
     });
   });
 });

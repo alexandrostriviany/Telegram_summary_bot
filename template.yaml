@@ -33,16 +33,30 @@ Parameters:
   
   LLMProvider:
     Type: String
-    Description: AI provider to use for summarization
+    Description: AI provider to use for summarization (primary)
     Default: gemini
     AllowedValues:
       - openai
       - bedrock
       - gemini
+      - grok
+
+  LLMProviderFallback:
+    Type: String
+    Description: >
+      Comma-separated fallback provider chain (tried in order on quota/rate-limit errors).
+      Example: "grok,openai" means if primary fails, try grok, then openai. Leave empty to disable.
+    Default: ''
   
   GeminiApiKey:
     Type: String
     Description: Google Gemini API key for summarization
+    NoEcho: true
+    Default: ''
+
+  GrokApiKey:
+    Type: String
+    Description: xAI Grok API key for summarization
     NoEcho: true
     Default: ''
 
@@ -111,7 +125,9 @@ Resources:
           TELEGRAM_BOT_TOKEN: !Ref TelegramBotToken
           OPENAI_API_KEY: !Ref OpenAIApiKey
           GEMINI_API_KEY: !Ref GeminiApiKey
+          GROK_API_KEY: !Ref GrokApiKey
           LLM_MODEL: !Ref LLMModel
+          LLM_PROVIDER_FALLBACK: !Ref LLMProviderFallback
           MESSAGE_TTL_HOURS: !Ref MessageTTLHours
           DEFAULT_SUMMARY_HOURS: !Ref DefaultSummaryHours
           CREDITS_TABLE: !Ref UserCreditsTable
