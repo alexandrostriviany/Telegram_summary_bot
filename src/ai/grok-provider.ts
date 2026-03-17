@@ -1,70 +1,71 @@
 /**
- * Google Gemini Provider Implementation
+ * xAI Grok Provider Implementation
  *
- * This module implements the AIProvider interface using Google's Gemini API.
- * It provides cost-efficient summarization with configurable parameters.
+ * This module implements the AIProvider interface using xAI's Grok API.
+ * The Grok API is OpenAI-compatible (same chat completions format),
+ * so this provider follows the same structure as the OpenAI provider.
  *
- * @module ai/gemini-provider
- *
- * **Validates: Requirements 5.2** - When LLM_PROVIDER is "gemini", use Gemini API
- * **Validates: Requirements 5.4** - If AI_Provider fails, respond with user-friendly error message
+ * @module ai/grok-provider
  */
 
 import { AIProvider, AIProviderError, SummarizeOptions, SummarizeResult, TokenUsage } from './ai-provider';
-import { SUMMARY_SYSTEM_PROMPT, SUMMARY_RESPONSE_SCHEMA } from './prompts';
+import { SUMMARY_SYSTEM_PROMPT } from './prompts';
 
 // ============================================================================
 // Types and Interfaces
 // ============================================================================
 
 /**
- * Gemini generateContent API request body
+ * Chat Completion API request message format (OpenAI-compatible)
  */
-interface GeminiRequest {
-  contents: Array<{
-    role: 'user' | 'model';
-    parts: Array<{ text: string }>;
-  }>;
-  systemInstruction?: {
-    parts: Array<{ text: string }>;
-  };
-  generationConfig: {
-    maxOutputTokens: number;
-    temperature: number;
-    responseMimeType?: string;
-    responseSchema?: object;
-    thinkingConfig?: {
-      thinkingBudget: number;
-    };
-  };
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
 }
 
 /**
- * Gemini generateContent API response format
+ * Chat Completion API request body (OpenAI-compatible)
  */
-interface GeminiResponse {
-  candidates?: Array<{
-    content: {
-      parts: Array<{ text: string; thought?: boolean }>;
+interface ChatCompletionRequest {
+  model: string;
+  messages: ChatMessage[];
+  max_tokens: number;
+  temperature: number;
+  response_format?: { type: string };
+}
+
+/**
+ * Chat Completion API response format (OpenAI-compatible)
+ */
+interface ChatCompletionResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: Array<{
+    index: number;
+    message: {
       role: string;
+      content: string;
     };
-    finishReason: string;
+    finish_reason: string;
   }>;
-  usageMetadata?: {
-    promptTokenCount: number;
-    candidatesTokenCount: number;
-    totalTokenCount: number;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
   };
 }
 
 /**
- * Gemini API error response format
+ * API error response format (OpenAI-compatible)
  */
-interface GeminiErrorResponse {
+interface GrokErrorResponse {
   error: {
-    code: number;
     message: string;
-    status: string;
+    type: string;
+    param?: string;
+    code?: string;
   };
 }
 
@@ -72,11 +73,11 @@ interface GeminiErrorResponse {
 // Constants
 // ============================================================================
 
-/** Gemini API base URL */
-const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+/** xAI Grok API endpoint */
+const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
 
-/** Default model for Gemini provider */
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+/** Default model for Grok provider */
+const DEFAULT_MODEL = 'grok-3-mini-fast';
 
 /** Maximum context tokens (conservative limit) */
 const MAX_CONTEXT_TOKENS = 8192;
@@ -97,51 +98,54 @@ const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 1000;
 
 // ============================================================================
-// Gemini Provider Implementation
+// Grok Provider Implementation
 // ============================================================================
 
 /**
- * Google Gemini Provider Implementation
+ * xAI Grok Provider Implementation
  *
- * Uses Gemini 2.5 Flash for cost-efficient summarization.
+ * Uses Grok models via xAI's OpenAI-compatible API.
  * Implements the AIProvider interface for seamless integration with the
  * summary engine.
- *
- * **Validates: Requirements 5.2** - Gemini API support
- * **Validates: Requirements 5.4** - Graceful error handling
  */
-export class GeminiProvider implements AIProvider {
+export class GrokProvider implements AIProvider {
   private readonly apiKey: string;
+  private readonly apiUrl: string;
   private readonly model: string;
   private readonly maxContextTokens: number;
 
   /**
-   * Create a new Gemini provider instance
+   * Create a new Grok provider instance
    *
-   * @param apiKey - Gemini API key (defaults to GEMINI_API_KEY env var)
-   * @param model - Model to use (defaults to LLM_MODEL env var, then gemini-2.5-flash)
+   * @param apiKey - xAI API key (defaults to GROK_API_KEY env var)
+   * @param apiUrl - API URL (defaults to xAI endpoint)
+   * @param model - Model to use (defaults to LLM_MODEL env var, then grok-3-mini-fast)
    * @throws AIProviderError if API key is not configured
    */
-  constructor(apiKey?: string, model?: string) {
-    this.apiKey = apiKey ?? process.env.GEMINI_API_KEY ?? '';
+  constructor(
+    apiKey?: string,
+    apiUrl: string = GROK_API_URL,
+    model?: string
+  ) {
+    this.apiKey = apiKey ?? process.env.GROK_API_KEY ?? '';
+    this.apiUrl = apiUrl;
     this.model = model ?? process.env.LLM_MODEL ?? DEFAULT_MODEL;
     this.maxContextTokens = MAX_CONTEXT_TOKENS;
 
     if (!this.apiKey) {
       throw new AIProviderError(
-        'Gemini API key is not configured. Please set the GEMINI_API_KEY environment variable.',
-        'gemini'
+        'Grok API key is not configured. Please set the GROK_API_KEY environment variable.',
+        'grok'
       );
     }
-
   }
 
   /**
-   * Generate a summary of the provided messages using Gemini's API
+   * Generate a summary of the provided messages using Grok's API
    *
    * @param messages - Array of message strings to summarize
    * @param options - Optional configuration for the summarization
-   * @returns Promise resolving to the generated summary text
+   * @returns Promise resolving to the generated summary result
    * @throws AIProviderError if the API call fails
    */
   async summarize(messages: string[], options?: SummarizeOptions): Promise<SummarizeResult> {
@@ -155,31 +159,21 @@ export class GeminiProvider implements AIProvider {
     const formattedMessages = messages.join('\n');
     const userPrompt = `Summarize:\n\n${formattedMessages}`;
 
-    const requestBody: GeminiRequest = {
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: userPrompt }],
-        },
+    const requestBody: ChatCompletionRequest = {
+      model: this.model,
+      messages: [
+        { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
       ],
-      systemInstruction: {
-        parts: [{ text: SUMMARY_SYSTEM_PROMPT }],
-      },
-      generationConfig: {
-        maxOutputTokens: maxTokens,
-        temperature: temperature,
-        responseMimeType: 'application/json',
-        responseSchema: SUMMARY_RESPONSE_SCHEMA,
-        thinkingConfig: {
-          thinkingBudget: 0,
-        },
-      },
+      max_tokens: maxTokens,
+      temperature: temperature,
+      response_format: { type: 'json_object' },
     };
 
     try {
       const response = await this.makeApiRequest(requestBody);
       const text = this.extractSummaryFromResponse(response);
-      console.log('Gemini raw summary response:', text);
+      console.log('Grok raw summary response:', text);
       const usage = this.extractUsageFromResponse(response);
       return { text, usage };
     } catch (error) {
@@ -188,7 +182,7 @@ export class GeminiProvider implements AIProvider {
       }
       throw new AIProviderError(
         'Failed to generate summary. Please try again later.',
-        'gemini',
+        'grok',
         error instanceof Error ? error : new Error(String(error))
       );
     }
@@ -204,16 +198,15 @@ export class GeminiProvider implements AIProvider {
   }
 
   /**
-   * Make an API request to Gemini with retry and exponential backoff
+   * Make an API request to Grok with retry and exponential backoff
    */
-  private async makeApiRequest(requestBody: GeminiRequest): Promise<GeminiResponse> {
-    const url = `${GEMINI_API_BASE_URL}/${this.model}:generateContent?key=${this.apiKey}`;
+  private async makeApiRequest(requestBody: ChatCompletionRequest): Promise<ChatCompletionResponse> {
     let lastError: AIProviderError | undefined;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
         const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
-        console.log(`Gemini API retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
+        console.log(`Grok API retry ${attempt}/${MAX_RETRIES} after ${delay}ms`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
@@ -221,10 +214,11 @@ export class GeminiProvider implements AIProvider {
       const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
       try {
-        const response = await fetch(url, {
+        const response = await fetch(this.apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.apiKey}`,
           },
           body: JSON.stringify(requestBody),
           signal: controller.signal,
@@ -235,17 +229,17 @@ export class GeminiProvider implements AIProvider {
         if (!response.ok) {
           const isRetryable = response.status === 429 || response.status >= 500;
           if (isRetryable && attempt < MAX_RETRIES) {
-            console.error(`Gemini API error (status ${response.status}), will retry`);
+            console.error(`Grok API error (status ${response.status}), will retry`);
             lastError = new AIProviderError(
-              `Gemini API returned status ${response.status}`,
-              'gemini'
+              `Grok API returned status ${response.status}`,
+              'grok'
             );
             continue;
           }
           await this.handleErrorResponse(response);
         }
 
-        const data = await response.json() as GeminiResponse;
+        const data = await response.json() as ChatCompletionResponse;
         return data;
       } catch (error) {
         clearTimeout(timeoutId);
@@ -253,15 +247,15 @@ export class GeminiProvider implements AIProvider {
         if (error instanceof Error && error.name === 'AbortError') {
           throw new AIProviderError(
             'Request timed out. Please try again.',
-            'gemini',
+            'grok',
             error
           );
         }
 
         if (error instanceof Error && error.message.includes('fetch')) {
           throw new AIProviderError(
-            'Unable to connect to Gemini. Please check your internet connection.',
-            'gemini',
+            'Unable to connect to Grok. Please check your internet connection.',
+            'grok',
             error
           );
         }
@@ -272,7 +266,7 @@ export class GeminiProvider implements AIProvider {
 
         throw new AIProviderError(
           'An unexpected error occurred while generating the summary.',
-          'gemini',
+          'grok',
           error instanceof Error ? error : new Error(String(error))
         );
       }
@@ -280,22 +274,23 @@ export class GeminiProvider implements AIProvider {
 
     throw lastError ?? new AIProviderError(
       'Failed after retries. Please try again later.',
-      'gemini'
+      'grok'
     );
   }
 
   /**
-   * Handle error responses from the Gemini API
+   * Handle error responses from the Grok API
    */
   private async handleErrorResponse(response: Response): Promise<never> {
     let errorMessage = 'Unable to generate summary. Please try again later.';
 
     try {
-      const errorData = await response.json() as GeminiErrorResponse;
+      const errorData = await response.json() as GrokErrorResponse;
 
       switch (response.status) {
         case 400:
-          if (errorData.error?.message?.toLowerCase().includes('token') ||
+          if (errorData.error?.code === 'context_length_exceeded' ||
+              errorData.error?.message?.toLowerCase().includes('token') ||
               errorData.error?.message?.toLowerCase().includes('length')) {
             errorMessage = 'The conversation is too long to summarize at once. Please try a shorter time range.';
           } else {
@@ -303,8 +298,10 @@ export class GeminiProvider implements AIProvider {
           }
           break;
         case 401:
-        case 403:
           errorMessage = 'Authentication failed. Please contact the administrator.';
+          break;
+        case 402:
+          errorMessage = 'Grok API quota exhausted. Please try again later or contact the administrator.';
           break;
         case 429:
           errorMessage = 'Too many requests. Please wait a moment and try again.';
@@ -312,59 +309,42 @@ export class GeminiProvider implements AIProvider {
         case 500:
         case 502:
         case 503:
-          errorMessage = 'Gemini service is temporarily unavailable. Please try again later.';
+          errorMessage = 'Grok service is temporarily unavailable. Please try again later.';
           break;
         default:
           errorMessage = 'Unable to generate summary. Please try again later.';
       }
 
-      console.error('Gemini API error:', {
+      console.error('Grok API error:', {
         status: response.status,
-        errorStatus: errorData.error?.status,
+        type: errorData.error?.type,
+        code: errorData.error?.code,
       });
     } catch {
-      console.error('Gemini API error: Unable to parse error response', {
+      console.error('Grok API error: Unable to parse error response', {
         status: response.status,
       });
     }
 
-    throw new AIProviderError(errorMessage, 'gemini');
+    throw new AIProviderError(errorMessage, 'grok');
   }
 
   /**
-   * Extract the summary text from the API response.
-   * Skips thinking parts from Gemini 2.5 models.
+   * Extract the summary text from the API response
    */
-  private extractSummaryFromResponse(response: GeminiResponse): string {
-    if (!response.candidates || response.candidates.length === 0) {
+  private extractSummaryFromResponse(response: ChatCompletionResponse): string {
+    if (!response.choices || response.choices.length === 0) {
       throw new AIProviderError(
         'Unable to generate summary. Please try again.',
-        'gemini'
+        'grok'
       );
     }
 
-    const parts = response.candidates[0]?.content?.parts;
-    if (!parts || parts.length === 0) {
-      throw new AIProviderError(
-        'Unable to generate summary. Please try again.',
-        'gemini'
-      );
-    }
-
-    // Warn if the response was truncated by the token limit
-    const finishReason = response.candidates[0]?.finishReason;
-    if (finishReason === 'MAX_TOKENS') {
-      console.warn('Gemini response was truncated by maxOutputTokens limit');
-    }
-
-    // Gemini 2.5 models include thinking parts (thought: true) before the actual response.
-    const contentPart = parts.find(part => !part.thought && part.text);
-    const content = contentPart?.text;
-
+    const content = response.choices[0]?.message?.content;
     if (!content) {
       throw new AIProviderError(
         'Unable to generate summary. Please try again.',
-        'gemini'
+        'grok'
       );
     }
 
@@ -373,18 +353,15 @@ export class GeminiProvider implements AIProvider {
 
   /**
    * Extract token usage from the API response
-   *
-   * @param response - The API response
-   * @returns TokenUsage if available, undefined otherwise
    */
-  private extractUsageFromResponse(response: GeminiResponse): TokenUsage | undefined {
-    if (!response.usageMetadata) {
+  private extractUsageFromResponse(response: ChatCompletionResponse): TokenUsage | undefined {
+    if (!response.usage) {
       return undefined;
     }
     return {
-      inputTokens: response.usageMetadata.promptTokenCount,
-      outputTokens: response.usageMetadata.candidatesTokenCount,
-      totalTokens: response.usageMetadata.totalTokenCount,
+      inputTokens: response.usage.prompt_tokens,
+      outputTokens: response.usage.completion_tokens,
+      totalTokens: response.usage.total_tokens,
     };
   }
 
@@ -397,8 +374,8 @@ export class GeminiProvider implements AIProvider {
 }
 
 /**
- * Create a Gemini provider instance with default configuration
+ * Create a Grok provider instance with default configuration
  */
-export function createGeminiProvider(): GeminiProvider {
-  return new GeminiProvider();
+export function createGrokProvider(): GrokProvider {
+  return new GrokProvider();
 }

@@ -88,7 +88,7 @@ export interface AIProvider {
 /**
  * Supported AI provider types
  */
-export type AIProviderType = 'openai' | 'bedrock' | 'gemini';
+export type AIProviderType = 'openai' | 'bedrock' | 'gemini' | 'grok';
 
 // ============================================================================
 // Error Classes
@@ -155,6 +155,12 @@ export { BedrockProvider } from './bedrock-provider';
 // Export GeminiProvider from its dedicated module
 export { GeminiProvider } from './gemini-provider';
 
+// Export GrokProvider from its dedicated module
+export { GrokProvider } from './grok-provider';
+
+// Export FallbackProvider and helpers
+export { FallbackProvider, FallbackProviderEntry, isQuotaOrRateLimitError } from './fallback-provider';
+
 // ============================================================================
 // Factory Function
 // ============================================================================
@@ -204,10 +210,15 @@ export function createAIProvider(providerType?: AIProviderType): AIProvider {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { GeminiProvider: GeminiProviderClass } = require('./gemini-provider');
       return new GeminiProviderClass();
+    case 'grok':
+      // Use require to avoid circular dependency at module load time
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { GrokProvider: GrokProviderClass } = require('./grok-provider');
+      return new GrokProviderClass();
     default:
       // This should never happen due to TypeScript, but handle it for runtime safety
       throw new AIProviderConfigError(
-        `Invalid AI provider type: ${type}. Supported types are 'openai', 'bedrock', and 'gemini'.`
+        `Invalid AI provider type: ${type}. Supported types are 'openai', 'bedrock', 'gemini', and 'grok'.`
       );
   }
 }
@@ -224,16 +235,16 @@ export function getProviderTypeFromEnv(): AIProviderType {
   if (!envValue) {
     throw new AIProviderConfigError(
       'LLM_PROVIDER environment variable is not set. ' +
-      'Please set it to "openai", "bedrock", or "gemini".'
+      'Please set it to "openai", "bedrock", "gemini", or "grok".'
     );
   }
-  
+
   const normalizedValue = envValue.toLowerCase().trim();
-  
-  if (normalizedValue !== 'openai' && normalizedValue !== 'bedrock' && normalizedValue !== 'gemini') {
+
+  if (normalizedValue !== 'openai' && normalizedValue !== 'bedrock' && normalizedValue !== 'gemini' && normalizedValue !== 'grok') {
     throw new AIProviderConfigError(
       `Invalid LLM_PROVIDER value: "${envValue}". ` +
-      'Supported values are "openai", "bedrock", and "gemini".'
+      'Supported values are "openai", "bedrock", "gemini", and "grok".'
     );
   }
   
@@ -242,10 +253,10 @@ export function getProviderTypeFromEnv(): AIProviderType {
 
 /**
  * Check if a valid AI provider is configured
- * 
+ *
  * This utility function can be used to verify configuration before
  * attempting to create a provider.
- * 
+ *
  * @returns true if a valid provider is configured, false otherwise
  */
 export function isAIProviderConfigured(): boolean {
@@ -255,4 +266,93 @@ export function isAIProviderConfigured(): boolean {
   } catch {
     return false;
   }
+}
+
+// ============================================================================
+// Fallback Chain Support
+// ============================================================================
+
+const VALID_PROVIDER_TYPES = new Set<string>(['openai', 'bedrock', 'gemini', 'grok']);
+
+/**
+ * Parse the LLM_PROVIDER_FALLBACK environment variable into a list of provider types.
+ *
+ * The variable should contain a comma-separated list of provider names, e.g.
+ * "grok,openai" meaning: if the primary fails, try grok, then openai.
+ *
+ * Invalid provider names are logged and skipped.
+ *
+ * @returns Array of valid fallback provider types (may be empty)
+ */
+export function parseFallbackChain(): AIProviderType[] {
+  const raw = process.env.LLM_PROVIDER_FALLBACK;
+  if (!raw) return [];
+
+  const types: AIProviderType[] = [];
+  for (const part of raw.split(',')) {
+    const normalized = part.toLowerCase().trim();
+    if (!normalized) continue;
+    if (VALID_PROVIDER_TYPES.has(normalized)) {
+      types.push(normalized as AIProviderType);
+    } else {
+      console.warn(`Ignoring invalid provider in LLM_PROVIDER_FALLBACK: "${part}"`);
+    }
+  }
+  return types;
+}
+
+/**
+ * Create an AI provider with optional fallback chain.
+ *
+ * If LLM_PROVIDER_FALLBACK is set, wraps the primary provider in a
+ * FallbackProvider that tries additional providers on quota/rate-limit errors.
+ *
+ * @param primaryType - The primary provider type
+ * @returns An AIProvider (either a single provider or a FallbackProvider)
+ */
+export function createAIProviderWithFallback(primaryType?: AIProviderType): { provider: AIProvider; providerType: AIProviderType } {
+  const type = primaryType ?? getProviderTypeFromEnv();
+  const fallbackTypes = parseFallbackChain();
+
+  // If no fallback chain, return the primary provider directly
+  if (fallbackTypes.length === 0) {
+    return { provider: createAIProvider(type), providerType: type };
+  }
+
+  // Build the full chain: primary + fallbacks
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { FallbackProvider: FallbackProviderClass } = require('./fallback-provider');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  type FPEntry = import('./fallback-provider').FallbackProviderEntry;
+
+  const chain: FPEntry[] = [];
+
+  // Try to create the primary provider
+  try {
+    chain.push({ type, provider: createAIProvider(type) });
+  } catch (error) {
+    console.warn(`Failed to create primary provider ${type}, skipping: ${error instanceof Error ? error.message : error}`);
+  }
+
+  // Try to create each fallback provider
+  for (const fbType of fallbackTypes) {
+    if (fbType === type) continue; // skip duplicate of primary
+    try {
+      chain.push({ type: fbType, provider: createAIProvider(fbType) });
+    } catch (error) {
+      console.warn(`Failed to create fallback provider ${fbType}, skipping: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  if (chain.length === 0) {
+    throw new AIProviderConfigError('No providers could be initialized in the fallback chain.');
+  }
+
+  if (chain.length === 1) {
+    // Only one provider survived, no need for fallback wrapper
+    return { provider: chain[0].provider, providerType: chain[0].type };
+  }
+
+  console.log(`AI provider fallback chain: ${chain.map(e => e.type).join(' -> ')}`);
+  return { provider: new FallbackProviderClass(chain), providerType: type };
 }

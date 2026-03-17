@@ -50,12 +50,18 @@ Parameters:
     Description: Admin email address for alarm notifications (leave empty to skip)
     Default: ''
 
+  SummaryCacheTableName:
+    Type: String
+    Description: Name of the DynamoDB summary cache table
+    Default: ''
+
 Conditions:
   HasAdminEmail: !Not [!Equals [!Ref AdminEmail, '']]
   HasCreditsTable: !Not [!Equals [!Ref UserCreditsTableName, '']]
   HasOwnershipTable: !Not [!Equals [!Ref ChatOwnershipTableName, '']]
   HasTopicLinksTable: !Not [!Equals [!Ref TopicLinksTableName, '']]
   HasUserGroupsTable: !Not [!Equals [!Ref UserGroupMembershipTableName, '']]
+  HasSummaryCacheTable: !Not [!Equals [!Ref SummaryCacheTableName, '']]
 
 Resources:
 
@@ -155,103 +161,51 @@ Resources:
             },
 
             {
-              "type": "metric",
-              "x": 0, "y": 5, "width": 12, "height": 6,
+              "type": "text",
+              "x": 0, "y": 5, "width": 24, "height": 1,
               "properties": {
-                "metrics": [
-                  ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "Total Requests"}]
-                ],
-                "view": "timeSeries",
-                "stacked": false,
-                "region": "${AWS::Region}",
-                "period": 300,
-                "title": "API Gateway – Request Count",
-                "yAxis": {"left": {"min": 0}}
+                "markdown": "## Audience Growth"
               }
             },
             {
-              "type": "metric",
-              "x": 12, "y": 5, "width": 12, "height": 6,
+              "type": "log",
+              "x": 0, "y": 6, "width": 6, "height": 4,
               "properties": {
-                "metrics": [
-                  ["AWS/ApiGateway", "4xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "4xx", "color": "#ff9900"}],
-                  ["AWS/ApiGateway", "5xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "5xx", "color": "#d13212"}]
-                ],
-                "view": "timeSeries",
-                "stacked": false,
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}'\n| filter @message like /\"_type\":\"AUDIENCE\"/\n| stats count_distinct(userId) as unique_users by bin(1d) as day\n| sort day desc\n| limit 30",
                 "region": "${AWS::Region}",
-                "period": 300,
-                "title": "API Gateway – Error Responses",
-                "yAxis": {"left": {"min": 0}}
-              }
-            },
-
-            {
-              "type": "metric",
-              "x": 0, "y": 11, "width": 12, "height": 6,
-              "properties": {
-                "metrics": [
-                  ["AWS/Lambda", "Invocations", "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Invocations", "color": "#2ca02c"}],
-                  ["AWS/Lambda", "Errors",      "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Errors",      "color": "#d13212"}],
-                  ["AWS/Lambda", "Throttles",   "FunctionName", "${LambdaFunctionName}", {"stat": "Sum", "label": "Throttles",   "color": "#ff9900"}]
-                ],
-                "view": "timeSeries",
                 "stacked": false,
-                "region": "${AWS::Region}",
-                "period": 300,
-                "title": "Lambda – Invocations / Errors / Throttles",
-                "yAxis": {"left": {"min": 0}}
+                "view": "table",
+                "title": "Unique Users (daily)"
               }
             },
             {
-              "type": "metric",
-              "x": 12, "y": 11, "width": 12, "height": 6,
+              "type": "log",
+              "x": 6, "y": 6, "width": 6, "height": 4,
               "properties": {
-                "metrics": [
-                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p50",  "label": "p50"}],
-                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p90",  "label": "p90"}],
-                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "p99",  "label": "p99"}],
-                  ["AWS/Lambda", "Duration", "FunctionName", "${LambdaFunctionName}", {"stat": "Maximum", "label": "Max", "color": "#d13212"}]
-                ],
-                "view": "timeSeries",
-                "stacked": false,
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}'\n| filter @message like /\"_type\":\"AUDIENCE\"/\n| filter chatType != 'private'\n| stats count_distinct(chatId) as unique_chats by bin(1d) as day\n| sort day desc\n| limit 30",
                 "region": "${AWS::Region}",
-                "period": 300,
-                "title": "Lambda – Duration Distribution (ms)",
-                "yAxis": {"left": {"min": 0, "label": "ms"}}
+                "stacked": false,
+                "view": "table",
+                "title": "Unique Group Chats (daily)"
+              }
+            },
+            {
+              "type": "log",
+              "x": 12, "y": 6, "width": 12, "height": 4,
+              "properties": {
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}'\n| filter @message like /\"_type\":\"AUDIENCE\"/\n| stats count_distinct(userId) as unique_users, count_distinct(chatId) as unique_chats, count(*) as total_events by bin(1d) as day\n| sort day asc\n| limit 90",
+                "region": "${AWS::Region}",
+                "stacked": false,
+                "view": "bar",
+                "title": "Audience Growth Trend (90 days)"
               }
             },
 
             {
-              "type": "metric",
-              "x": 0, "y": 17, "width": 12, "height": 6,
+              "type": "text",
+              "x": 0, "y": 10, "width": 24, "height": 1,
               "properties": {
-                "metrics": [
-                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read RCU"}],
-                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Write WCU"}]
-                ],
-                "view": "timeSeries",
-                "stacked": false,
-                "region": "${AWS::Region}",
-                "period": 300,
-                "title": "DynamoDB – Consumed Capacity",
-                "yAxis": {"left": {"min": 0}}
-              }
-            },
-            {
-              "type": "metric",
-              "x": 12, "y": 17, "width": 12, "height": 6,
-              "properties": {
-                "metrics": [
-                  ["AWS/DynamoDB", "ReadThrottleEvents",  "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Read Throttles",  "color": "#ff9900"}],
-                  ["AWS/DynamoDB", "WriteThrottleEvents", "TableName", "${DynamoDBTableName}", {"stat": "Sum", "label": "Write Throttles", "color": "#d13212"}]
-                ],
-                "view": "timeSeries",
-                "stacked": false,
-                "region": "${AWS::Region}",
-                "period": 300,
-                "title": "DynamoDB – Throttle Events",
-                "yAxis": {"left": {"min": 0}}
+                "markdown": "*Detailed infra metrics → [Infrastructure dashboard](https://console.aws.amazon.com/cloudwatch/home#dashboards:name=${AWS::StackName}-Infrastructure) | Errors → [Errors dashboard](https://console.aws.amazon.com/cloudwatch/home#dashboards:name=${AWS::StackName}-Errors)*"
               }
             }
           ]
@@ -365,40 +319,6 @@ Resources:
               "type": "log",
               "x": 0, "y": 14, "width": 12, "height": 6,
               "properties": {
-                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /\\[AI_PROVIDER_ERROR\\]/ or @message like /\\[AI_PROVIDER_TIMEOUT\\]/ or @message like /OpenAI API error/ or @message like /Bedrock API error/ | stats count(*) as errors by bin(5m) | sort @timestamp desc",
-                "region": "${AWS::Region}",
-                "view": "timeSeries",
-                "title": "AI Provider Errors",
-                "stacked": false
-              }
-            },
-            {
-              "type": "log",
-              "x": 12, "y": 14, "width": 12, "height": 6,
-              "properties": {
-                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Telegram API call failed/ | stats count(*) as failures by bin(5m) | sort @timestamp desc",
-                "region": "${AWS::Region}",
-                "view": "timeSeries",
-                "title": "Telegram API Send Failures (Retry Attempts)",
-                "stacked": false
-              }
-            },
-
-            {
-              "type": "log",
-              "x": 0, "y": 20, "width": 12, "height": 6,
-              "properties": {
-                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /\\[(NO_MESSAGES|AI_PROVIDER_ERROR|AI_PROVIDER_TIMEOUT|DYNAMODB_ERROR|INVALID_COMMAND|TELEGRAM_API_ERROR|CONFIGURATION_ERROR|UNKNOWN_ERROR)\\]/ | parse @message /\\[(?<errorCode>[A-Z_]+)\\]/ | stats count(*) as total by errorCode | sort total desc",
-                "region": "${AWS::Region}",
-                "view": "pie",
-                "title": "Error Distribution by Code",
-                "stacked": false
-              }
-            },
-            {
-              "type": "log",
-              "x": 12, "y": 20, "width": 12, "height": 6,
-              "properties": {
                 "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /Bot added to group/ | stats count(*) as additions by bin(1h) | sort @timestamp desc",
                 "region": "${AWS::Region}",
                 "view": "bar",
@@ -418,7 +338,7 @@ Resources:
               "type": "log",
               "x": 0, "y": 27, "width": 12, "height": 6,
               "properties": {
-                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message /\"provider\":\"(?<prov>[^\"]+)\"/ | parse @message /\"totalTokens\":(?<tok>\\d+)/ | stats sum(tok) as total_tokens by prov | sort total_tokens desc",
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | stats sum(totalTokens) as total_tokens by provider | sort total_tokens desc",
                 "region": "${AWS::Region}",
                 "view": "timeSeries",
                 "title": "Total Tokens by Provider",
@@ -429,7 +349,7 @@ Resources:
               "type": "log",
               "x": 12, "y": 27, "width": 12, "height": 6,
               "properties": {
-                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message /\"inputTokens\":(?<inTok>\\d+)/ | parse @message /\"outputTokens\":(?<outTok>\\d+)/ | stats sum(inTok) as input_tokens, sum(outTok) as output_tokens by bin(5m)",
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | stats sum(inputTokens) as input_tokens, sum(outputTokens) as output_tokens by bin(5m)",
                 "region": "${AWS::Region}",
                 "view": "timeSeries",
                 "title": "Input vs Output Tokens",
@@ -440,7 +360,7 @@ Resources:
               "type": "log",
               "x": 0, "y": 33, "width": 12, "height": 6,
               "properties": {
-                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message /\"provider\":\"(?<prov>[^\"]+)\"/ | parse @message /\"apiCallCount\":(?<calls>\\d+)/ | stats avg(calls) as avg_calls, max(calls) as max_calls by prov",
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | stats avg(apiCallCount) as avg_calls, max(apiCallCount) as max_calls by provider",
                 "region": "${AWS::Region}",
                 "view": "bar",
                 "title": "API Calls per Summary Request (avg / max)",
@@ -451,11 +371,52 @@ Resources:
               "type": "log",
               "x": 12, "y": 33, "width": 12, "height": 6,
               "properties": {
-                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | parse @message /\"provider\":\"(?<prov>[^\"]+)\"/ | parse @message /\"model\":\"(?<mdl>[^\"]+)\"/ | parse @message /\"chatId\":(?<chat>\\d+)/ | parse @message /\"inputTokens\":(?<inTok>\\d+)/ | parse @message /\"outputTokens\":(?<outTok>\\d+)/ | parse @message /\"totalTokens\":(?<totTok>\\d+)/ | parse @message /\"apiCallCount\":(?<calls>\\d+)/ | fields @timestamp, prov, mdl, chat, inTok, outTok, totTok, calls | sort @timestamp desc | limit 20",
+                "query": "SOURCE '/aws/lambda/${LambdaFunctionName}' | filter @message like /TOKEN_USAGE_TOTAL/ | fields @timestamp, provider, model, chatId, inputTokens, outputTokens, totalTokens, apiCallCount | sort @timestamp desc | limit 20",
                 "region": "${AWS::Region}",
                 "view": "table",
                 "title": "Recent Token Usage (last 20 requests)",
                 "stacked": false
+              }
+            },
+
+            {
+              "type": "text",
+              "x": 0, "y": 39, "width": 24, "height": 1,
+              "properties": {
+                "markdown": "## Summary Caching"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 40, "width": 12, "height": 6,
+              "properties": {
+                "title": "Summary Cache Hit Rate (%)",
+                "metrics": [
+                  [{"expression": "IF(hits+misses>0, 100*hits/(hits+misses), 0)", "label": "Hit Rate %", "id": "rate"}],
+                  ["TelegramSummaryBot", "SummaryCacheHit", {"stat": "Sum", "id": "hits", "visible": false}],
+                  ["TelegramSummaryBot", "SummaryCacheMiss", {"stat": "Sum", "id": "misses", "visible": false}]
+                ],
+                "view": "timeSeries",
+                "period": 3600,
+                "stat": "Sum",
+                "region": "${AWS::Region}",
+                "yAxis": {"left": {"min": 0, "max": 100}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 40, "width": 12, "height": 6,
+              "properties": {
+                "title": "Summary Cache Events",
+                "metrics": [
+                  ["TelegramSummaryBot", "SummaryCacheHit", {"stat": "Sum", "label": "Cache Hits", "color": "#2ca02c"}],
+                  ["TelegramSummaryBot", "SummaryCacheMiss", {"stat": "Sum", "label": "Cache Misses", "color": "#d62728"}],
+                  ["TelegramSummaryBot", "SummaryCacheCoalesced", {"stat": "Sum", "label": "Coalesced", "color": "#1f77b4"}]
+                ],
+                "view": "timeSeries",
+                "period": 3600,
+                "stat": "Sum",
+                "region": "${AWS::Region}"
               }
             }
           ]
@@ -639,11 +600,48 @@ Resources:
             {
               "type": "text",
               "x": 0, "y": 26, "width": 24, "height": 1,
+              "properties": { "markdown": "## DynamoDB – Summary Cache (${SummaryCacheTableName})" }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 27, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ConsumedReadCapacityUnits",  "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Read RCU"}],
+                  ["AWS/DynamoDB", "ConsumedWriteCapacityUnits", "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Write WCU"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Summary Cache – Consumed Capacity Units",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 27, "width": 12, "height": 6,
+              "properties": {
+                "metrics": [
+                  ["AWS/DynamoDB", "ReadThrottleEvents",  "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Read Throttles",  "color": "#ff9900"}],
+                  ["AWS/DynamoDB", "WriteThrottleEvents", "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "Write Throttles", "color": "#d13212"}],
+                  ["AWS/DynamoDB", "SystemErrors",        "TableName", "${SummaryCacheTableName}", {"stat": "Sum", "label": "System Errors",   "color": "#9467bd"}]
+                ],
+                "view": "timeSeries",
+                "region": "${AWS::Region}",
+                "period": 300,
+                "title": "Summary Cache – Throttles & Errors",
+                "yAxis": {"left": {"min": 0}}
+              }
+            },
+
+            {
+              "type": "text",
+              "x": 0, "y": 33, "width": 24, "height": 1,
               "properties": { "markdown": "## API Gateway – HTTP API (${HttpApiId})" }
             },
             {
               "type": "metric",
-              "x": 0, "y": 27, "width": 8, "height": 6,
+              "x": 0, "y": 34, "width": 8, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "Count", "ApiId", "${HttpApiId}", {"stat": "Sum"}]
@@ -657,7 +655,7 @@ Resources:
             },
             {
               "type": "metric",
-              "x": 8, "y": 27, "width": 8, "height": 6,
+              "x": 8, "y": 34, "width": 8, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "4xx", "ApiId", "${HttpApiId}", {"stat": "Sum", "label": "4xx", "color": "#ff9900"}],
@@ -672,7 +670,7 @@ Resources:
             },
             {
               "type": "metric",
-              "x": 16, "y": 27, "width": 8, "height": 6,
+              "x": 16, "y": 34, "width": 8, "height": 6,
               "properties": {
                 "metrics": [
                   ["AWS/ApiGateway", "Latency",            "ApiId", "${HttpApiId}", {"stat": "p50", "label": "Latency p50"}],
@@ -833,6 +831,45 @@ Resources:
             }
           ]
         }
+
+  # ==========================================================================
+  # METRIC FILTERS – Summary Caching
+  #
+  # Extract structured metrics from Lambda log lines for cache observability.
+  # ==========================================================================
+
+  SummaryCacheHitFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
+      FilterPattern: '"Summary cache HIT"'
+      MetricTransformations:
+        - MetricNamespace: TelegramSummaryBot
+          MetricName: SummaryCacheHit
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SummaryCacheMissFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
+      FilterPattern: '"Summary cache MISS"'
+      MetricTransformations:
+        - MetricNamespace: TelegramSummaryBot
+          MetricName: SummaryCacheMiss
+          MetricValue: '1'
+          DefaultValue: 0
+
+  SummaryCoalescedFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${LambdaFunctionName}'
+      FilterPattern: '"Coalesced request for key:"'
+      MetricTransformations:
+        - MetricNamespace: TelegramSummaryBot
+          MetricName: SummaryCacheCoalesced
+          MetricValue: '1'
+          DefaultValue: 0
 
   # ==========================================================================
   # CLOUDWATCH ALARMS
@@ -1129,6 +1166,73 @@ Resources:
         - HasAdminEmail
         - [!Ref AlarmNotificationTopic]
         - !Ref 'AWS::NoValue'
+
+  # --- Summary Cache Table: throttle alarm ------------------------------------
+  SummaryCacheTableThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasSummaryCacheTable
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-SummaryCacheTable-Throttles'
+      AlarmDescription: >
+        Summary cache DynamoDB table is being throttled. Cache lookups and
+        writes for summary deduplication are impacted.
+      Namespace: AWS/DynamoDB
+      MetricName: ThrottledRequests
+      Dimensions:
+        - Name: TableName
+          Value: !Ref SummaryCacheTableName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+      OKActions: !If
+        - HasAdminEmail
+        - [!Ref AlarmNotificationTopic]
+        - !Ref 'AWS::NoValue'
+
+  # --- Summary Cache: high miss rate ------------------------------------------
+  SummaryCacheHighMissRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-summary-cache-high-miss-rate'
+      AlarmDescription: >
+        Summary cache miss rate exceeds 90% for 1 hour - caching may be broken
+      Metrics:
+        - Id: hits
+          MetricStat:
+            Metric:
+              Namespace: TelegramSummaryBot
+              MetricName: SummaryCacheHit
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: misses
+          MetricStat:
+            Metric:
+              Namespace: TelegramSummaryBot
+              MetricName: SummaryCacheMiss
+            Period: 3600
+            Stat: Sum
+          ReturnData: false
+        - Id: miss_rate
+          Expression: 'IF(hits+misses>0, 100*misses/(hits+misses), 0)'
+          Label: 'Miss Rate %'
+          ReturnData: true
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 90
+      EvaluationPeriods: 1
+      TreatMissingData: notBreaching
+      ActionsEnabled: true
+      AlarmActions:
+        - !If [HasAdminEmail, !Ref AlarmNotificationTopic, !Ref 'AWS::NoValue']
+      OKActions:
+        - !If [HasAdminEmail, !Ref AlarmNotificationTopic, !Ref 'AWS::NoValue']
 
 Outputs:
   SystemOverviewDashboardUrl:

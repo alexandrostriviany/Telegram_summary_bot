@@ -22,7 +22,7 @@ import { createGroupsHandler } from './commands/groups-handler';
 import { TelegramClient, createTelegramClient } from './telegram/telegram-client';
 import { createSummaryEngine } from './summary/summary-engine';
 import { createSummaryFormatter } from './summary/summary-formatter';
-import { createAIProvider, isAIProviderConfigured, getProviderTypeFromEnv } from './ai/ai-provider';
+import { isAIProviderConfigured, createAIProviderWithFallback } from './ai/ai-provider';
 import { DynamoDBCreditsStore, CreditsStore } from './store/credits-store';
 import { DynamoDBTopicLinkStore, TopicLinkStore } from './store/topic-link-store';
 import { DynamoDBUserGroupStore, UserGroupStore } from './store/user-group-store';
@@ -646,6 +646,17 @@ export async function handleWebhook(
 
   const message = update.message;
 
+  // Structured audience tracking log for CloudWatch Logs Insights
+  // Enables count_distinct() queries for unique users and unique chats
+  if (message.from?.id) {
+    console.log(JSON.stringify({
+      _type: 'AUDIENCE',
+      userId: message.from.id,
+      chatId: message.chat.id,
+      chatType: message.chat.type,
+    }));
+  }
+
   // Route based on message type
   // Priority: bot added > command > text message > ignore
 
@@ -859,8 +870,7 @@ export async function handler(
 
     // Register /summary command handler
     if (isAIProviderConfigured()) {
-      const providerType = getProviderTypeFromEnv();
-      const aiProvider = createAIProvider(providerType);
+      const { provider: aiProvider, providerType } = createAIProviderWithFallback();
       const model = process.env.LLM_MODEL ?? 'default';
       const summaryEngine = createSummaryEngine(messageStore, aiProvider, providerType, model);
       const summaryFormatter = createSummaryFormatter();
