@@ -76,8 +76,8 @@ interface GrokErrorResponse {
 /** xAI Grok API endpoint */
 const GROK_API_URL = 'https://api.x.ai/v1/chat/completions';
 
-/** Default model for Grok provider */
-const DEFAULT_MODEL = 'grok-3-mini-fast';
+/** Default model for Grok provider — cheapest non-reasoning option ($0.20/$0.50 per M tokens) */
+const DEFAULT_MODEL = 'grok-4-fast-non-reasoning';
 
 /** Maximum context tokens (conservative limit) */
 const MAX_CONTEXT_TOKENS = 8192;
