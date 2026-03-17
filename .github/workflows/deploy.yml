@@ -56,8 +56,14 @@ jobs:
           if [ -n "${{ secrets.GEMINI_API_KEY }}" ]; then
             PARAMS="$PARAMS GeminiApiKey=${{ secrets.GEMINI_API_KEY }}"
           fi
+          if [ -n "${{ secrets.GROK_API_KEY }}" ]; then
+            PARAMS="$PARAMS GrokApiKey=${{ secrets.GROK_API_KEY }}"
+          fi
           if [ -n "${{ vars.LLM_MODEL }}" ]; then
             PARAMS="$PARAMS LLMModel=${{ vars.LLM_MODEL }}"
+          fi
+          if [ -n "${{ vars.LLM_PROVIDER_FALLBACK }}" ]; then
+            PARAMS="$PARAMS LLMProviderFallback=${{ vars.LLM_PROVIDER_FALLBACK }}"
           fi
 
           sam deploy \
