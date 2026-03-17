@@ -27,6 +27,7 @@ describe('CreditsHandler', () => {
     mockCreditsStore = {
       userExists: jest.fn().mockResolvedValue(true),
       getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
+      hasCredit: jest.fn().mockResolvedValue(true),
       consumeCredit: jest.fn().mockResolvedValue(true),
       getCredits: jest.fn().mockResolvedValue(defaultCredits),
       setDailyLimit: jest.fn().mockResolvedValue(undefined),

@@ -61,6 +61,14 @@ export interface CreditsStore {
   getOrCreateUser(userId: number): Promise<UserCredits>;
 
   /**
+   * Check if a user has at least one credit available (without consuming).
+   * Auto-resets credits if the date has changed.
+   * @param userId - The Telegram user ID
+   * @returns true if user has credits remaining, false if exhausted
+   */
+  hasCredit(userId: number): Promise<boolean>;
+
+  /**
    * Attempt to consume one credit for a user.
    * Auto-resets credits if the date has changed.
    * @param userId - The Telegram user ID
@@ -213,6 +221,11 @@ export class DynamoDBCreditsStore implements CreditsStore {
     await this.client.send(putCommand);
 
     return newUser;
+  }
+
+  async hasCredit(userId: number): Promise<boolean> {
+    const user = await this.getOrCreateUser(userId);
+    return user.creditsUsedToday < user.dailyLimit;
   }
 
   async consumeCredit(userId: number): Promise<boolean> {
