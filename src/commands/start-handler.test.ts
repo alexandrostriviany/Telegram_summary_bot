@@ -143,6 +143,7 @@ describe('StartHandler', () => {
       const mockCreditsStore: jest.Mocked<CreditsStore> = {
         userExists: jest.fn().mockResolvedValue(true),
         getOrCreateUser: jest.fn().mockResolvedValue(defaultCredits),
+        hasCredit: jest.fn().mockResolvedValue(true),
         consumeCredit: jest.fn().mockResolvedValue(true),
         getCredits: jest.fn().mockResolvedValue(defaultCredits),
         setDailyLimit: jest.fn().mockResolvedValue(undefined),
@@ -170,6 +171,7 @@ describe('StartHandler', () => {
       const mockCreditsStore: jest.Mocked<CreditsStore> = {
         userExists: jest.fn(),
         getOrCreateUser: jest.fn().mockRejectedValue(new Error('DynamoDB error')),
+        hasCredit: jest.fn(),
         consumeCredit: jest.fn(),
         getCredits: jest.fn(),
         setDailyLimit: jest.fn(),
@@ -196,6 +198,7 @@ describe('StartHandler', () => {
       const mockCreditsStore: jest.Mocked<CreditsStore> = {
         userExists: jest.fn(),
         getOrCreateUser: jest.fn(),
+        hasCredit: jest.fn(),
         consumeCredit: jest.fn(),
         getCredits: jest.fn(),
         setDailyLimit: jest.fn(),

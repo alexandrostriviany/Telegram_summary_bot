@@ -65,6 +65,7 @@ const mockCreditsStore: jest.Mocked<CreditsStore> = {
     userId: 0, dailyLimit: 10, creditsUsedToday: 0,
     lastResetDate: '2026-03-06', isPaid: false, createdAt: 0,
   }),
+  hasCredit: jest.fn().mockResolvedValue(true),
   consumeCredit: jest.fn().mockResolvedValue(true),
   getCredits: jest.fn().mockResolvedValue({
     userId: 0, dailyLimit: 10, creditsUsedToday: 0,

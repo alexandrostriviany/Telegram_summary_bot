@@ -334,10 +334,10 @@ export class SummaryHandler implements CommandHandler {
         return;
       }
 
-      // 3. Credit check — user pays their own credits
+      // 3. Credit check — verify user has credits (but don't consume yet)
       if (this.creditsStore) {
-        const consumed = await this.creditsStore.consumeCredit(userId);
-        if (!consumed) {
+        const hasCredits = await this.creditsStore.hasCredit(userId);
+        if (!hasCredits) {
           throw new CreditsExhaustedError(undefined, userId);
         }
       }
@@ -346,7 +346,12 @@ export class SummaryHandler implements CommandHandler {
       //    Do NOT pass threadId — we want all group messages, not filtered by topic
       const summary = await this.generateSummary(groupChatId, range);
 
-      // 5. Send result to the private chat topic, passing groupChatId for keyboard context
+      // 5. Consume credit only after successful summary generation
+      if (this.creditsStore) {
+        await this.creditsStore.consumeCredit(userId);
+      }
+
+      // 6. Send result to the private chat topic, passing groupChatId for keyboard context
       await this.sendMessage(chatId, summary, groupChatId);
     } catch (error) {
       const errorResponse = handleError(error instanceof Error ? error : new Error(String(error)));
@@ -379,8 +384,8 @@ export class SummaryHandler implements CommandHandler {
         }
 
         if (userId !== 0) {
-          const consumed = await this.creditsStore.consumeCredit(userId);
-          if (!consumed) {
+          const hasCredits = await this.creditsStore.hasCredit(userId);
+          if (!hasCredits) {
             throw new CreditsExhaustedError(undefined, userId);
           }
         }
@@ -388,6 +393,12 @@ export class SummaryHandler implements CommandHandler {
 
       // Generate and send the summary (scoped to forum topic if called from one)
       const summary = await this.generateSummary(chatId, range, message.message_thread_id);
+
+      // Consume credit only after successful summary generation
+      if (this.creditsStore && (message.from?.id ?? 0) !== 0) {
+        await this.creditsStore.consumeCredit(message.from!.id);
+      }
+
       await this.sendMessage(chatId, summary, chatId);
 
     } catch (error) {
