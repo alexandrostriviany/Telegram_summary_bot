@@ -136,7 +136,6 @@ Resources:
           DEFAULT_DAILY_CREDITS: !Ref DefaultDailyCredits
           TOPIC_LINKS_TABLE: !Ref TopicLinksTable
           USER_GROUPS_TABLE: !Ref UserGroupMembershipTable
-          SUMMARY_CACHE_TABLE: !Ref SummaryCacheTable
       # IAM policies with least privilege
       # Validates: Requirements 7.2 - Use IAM roles with least-privilege permissions
       Policies:
@@ -150,8 +149,6 @@ Resources:
             TableName: !Ref TopicLinksTable
         - DynamoDBCrudPolicy:
             TableName: !Ref UserGroupMembershipTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref SummaryCacheTable
         # Bedrock policy (only needed if using Bedrock provider)
         - Version: '2012-10-17'
           Statement:
@@ -327,31 +324,6 @@ Resources:
         - Key: Environment
           Value: !Ref AWS::StackName
 
-  # DynamoDB table for summary caching (time-bucketed deduplication)
-  SummaryCacheTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub '${AWS::StackName}-summary-cache'
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: cacheKey
-          AttributeType: S
-      KeySchema:
-        - AttributeName: cacheKey
-          KeyType: HASH
-      TimeToLiveSpecification:
-        AttributeName: expireAt
-        Enabled: true
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: false
-      SSESpecification:
-        SSEEnabled: true
-      Tags:
-        - Key: Application
-          Value: TelegramSummaryBot
-        - Key: Environment
-          Value: !Ref AWS::StackName
-
   # CloudWatch Log Group with retention policy
   # Validates: Cost Optimization - Set log retention to 7 days
   TelegramBotFunctionLogGroup:
@@ -400,10 +372,6 @@ Outputs:
   UserGroupMembershipTableName:
     Description: DynamoDB table name for user-group membership tracking
     Value: !Ref UserGroupMembershipTable
-
-  SummaryCacheTableName:
-    Description: DynamoDB table name for summary cache
-    Value: !Ref SummaryCacheTable
 
   ApiEndpoint:
     Description: HTTP API endpoint URL
