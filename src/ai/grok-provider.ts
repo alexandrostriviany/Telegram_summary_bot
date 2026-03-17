@@ -319,6 +319,7 @@ export class GrokProvider implements AIProvider {
         status: response.status,
         type: errorData.error?.type,
         code: errorData.error?.code,
+        message: errorData.error?.message,
       });
     } catch {
       console.error('Grok API error: Unable to parse error response', {
