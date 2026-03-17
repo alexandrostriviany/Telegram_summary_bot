@@ -129,7 +129,9 @@ export class GrokProvider implements AIProvider {
   ) {
     this.apiKey = apiKey ?? process.env.GROK_API_KEY ?? '';
     this.apiUrl = apiUrl;
-    this.model = model ?? process.env.LLM_MODEL ?? DEFAULT_MODEL;
+    const envModel = process.env.LLM_MODEL;
+    const isGrokModel = envModel && envModel.startsWith('grok');
+    this.model = model ?? (isGrokModel ? envModel : DEFAULT_MODEL);
     this.maxContextTokens = MAX_CONTEXT_TOKENS;
 
     if (!this.apiKey) {

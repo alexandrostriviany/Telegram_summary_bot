@@ -103,7 +103,7 @@ export class BedrockProvider implements AIProvider {
    */
   constructor(
     region?: string,
-    modelId: string = process.env.LLM_MODEL ?? MODEL_ID,
+    modelId?: string,
     client?: BedrockRuntimeClient
   ) {
     const awsRegion = region ?? process.env.AWS_REGION ?? 'us-east-1';
@@ -112,7 +112,9 @@ export class BedrockProvider implements AIProvider {
       region: awsRegion,
     });
     
-    this.modelId = modelId;
+    const envModel = process.env.LLM_MODEL;
+    const isBedrockModel = envModel && envModel.startsWith('anthropic.');
+    this.modelId = modelId ?? (isBedrockModel ? envModel : MODEL_ID);
     this.maxContextTokens = MAX_CONTEXT_TOKENS;
   }
 

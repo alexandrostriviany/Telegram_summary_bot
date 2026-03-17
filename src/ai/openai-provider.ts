@@ -124,11 +124,13 @@ export class OpenAIProvider implements AIProvider {
   constructor(
     apiKey?: string,
     apiUrl: string = OPENAI_API_URL,
-    model: string = process.env.LLM_MODEL ?? MODEL
+    model?: string
   ) {
     this.apiKey = apiKey ?? process.env.OPENAI_API_KEY ?? '';
     this.apiUrl = apiUrl;
-    this.model = model;
+    const envModel = process.env.LLM_MODEL;
+    const isOpenAIModel = envModel && (envModel.startsWith('gpt') || envModel.startsWith('o1') || envModel.startsWith('o3'));
+    this.model = model ?? (isOpenAIModel ? envModel : MODEL);
     this.maxContextTokens = MAX_CONTEXT_TOKENS;
 
     if (!this.apiKey) {
